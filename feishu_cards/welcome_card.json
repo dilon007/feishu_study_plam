@@ -1,0 +1,93 @@
+{
+  "config": {
+    "wide_screen_mode": true
+  },
+  "header": {
+    "template": "blue",
+    "title": {
+      "tag": "plain_text",
+      "content": "🎓 欢迎使用「苏九学伴」· 苏州市9年级学习助手中台"
+    }
+  },
+  "elements": [
+    {
+      "tag": "div",
+      "text": {
+        "tag": "lark_md",
+        "content": "**你好，初三学子！** 本中台专门面向 **苏州市9年级（初三）学生** 定制，所有知识解析与真题检索严格锁定在 **苏州中考考纲** 范围内，已开启 🛡️ **严防超纲安全机制**（不使用高中公式、超纲定理）。"
+      }
+    },
+    {
+      "tag": "hr"
+    },
+    {
+      "tag": "div",
+      "fields": [
+        {
+          "is_short": true,
+          "text": {
+            "tag": "lark_md",
+            "content": "**📚 精准匹配教材：**\n• 数学/物理：苏科版\n• 英语：译林牛津版\n• 语文/道法/历史：统编版"
+          }
+        },
+        {
+          "is_short": true,
+          "text": {
+            "tag": "lark_md",
+            "content": "**🎯 核心服务覆盖：**\n• 苏州中考真题解析\n• 园区/新区/姑苏一模二模\n• 规范中考解题踩分步骤"
+          }
+        }
+      ]
+    },
+    {
+      "tag": "hr"
+    },
+    {
+      "tag": "note",
+      "elements": [
+        {
+          "tag": "plain_text",
+          "content": "💡 提示：你可以直接向机器人发送题目、苏科版课本知识点疑惑，或点击下方快捷入口。"
+        }
+      ]
+    },
+    {
+      "tag": "action",
+      "actions": [
+        {
+          "tag": "button",
+          "text": {
+            "tag": "plain_text",
+            "content": "📖 进入工作台首页"
+          },
+          "type": "primary",
+          "url": "https://your-server-domain.com/welcome"
+        },
+        {
+          "tag": "button",
+          "text": {
+            "tag": "plain_text",
+            "content": "📐 苏科版数学专区"
+          },
+          "type": "default",
+          "value": {
+            "action": "goto_subject",
+            "subject": "math_suke"
+          }
+        },
+        {
+          "tag": "button",
+          "text": {
+            "tag": "plain_text",
+            "content": "⚡ 问答：二次函数极值"
+          },
+          "type": "default",
+          "value": {
+            "action": "quick_query",
+            "query": "请用苏科版初三方法解析二次函数最值"
+          }
+        }
+      ]
+    }
+  ]
+}
