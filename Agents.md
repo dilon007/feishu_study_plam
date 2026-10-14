@@ -115,6 +115,7 @@ feishu_study_plam/
 | 2026-10-13 | Init | 初始化项目架构；确立苏州市9年级专属范围与防超纲机制；设计首版欢迎页与飞书卡片 | `Agents.md`, `backend/`, `frontend/`, `feishu_cards/` |
 | 2026-10-13 | Config | 关联 GitHub 远程仓库并完成首次推送同步；记录仓库与部署 Token 配置 | `Agents.md`, `.git/` |
 | 2026-10-14 | Feature | 支持飞书会话内 @助手 呼出助学菜单；集成译林版初三英语生词速查与统编版九年级古文古诗速查，支持卡片就地无刷新交互与防超纲拦截 | `backend/main.py`, `backend/card_builder.py`, `backend/knowledge_db.py`, `backend/feishu_client.py` |
+| 2026-10-14 | Feature | 全面支持初三数理化题目直接发送截图（拍照搜题）：自动拉取飞书图片资源，利用 Gemini 多模态视觉大模型精准识别几何辅助线与坐标图，按中考规范分步推导与防超纲拦截 | `backend/main.py`, `backend/llm_provider.py`, `backend/feishu_client.py` |
 
 ---
 

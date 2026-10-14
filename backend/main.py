@@ -9,8 +9,8 @@ import re
 from guardrail import SUZHOU_GRADE9_SYSTEM_PROMPT, check_for_out_of_bounds
 from knowledge_db import query_english_word, query_ancient_text
 from card_builder import build_menu_card, build_word_card, build_ancient_card, build_mode_input_card, build_qa_result_card
-from feishu_client import reply_interactive_card, send_chat_card
-from llm_provider import generate_suzhou_answer, get_current_model_config, SUPPORTED_PROVIDERS
+from feishu_client import reply_interactive_card, send_chat_card, download_image_resource
+from llm_provider import generate_suzhou_answer, generate_suzhou_vision_answer, get_current_model_config, SUPPORTED_PROVIDERS
 import httpx
 from dotenv import load_dotenv
 
@@ -19,7 +19,7 @@ load_dotenv()
 app = FastAPI(
     title="苏九学伴 - 学习助手中台",
     description="针对苏州市9年级学生的学习助手中台后端 API 与飞书消息机器人引擎",
-    version="1.3.0"
+    version="1.4.0"
 )
 
 # 挂载前端页面静态资源
@@ -190,6 +190,54 @@ async def feishu_event_handler(request: Request):
                             card_to_send = build_menu_card()
                     else:
                         card_to_send = build_menu_card()
+
+            if card_to_send and message_id:
+                await reply_interactive_card(message_id, card_to_send)
+
+        elif msg_type == "image":
+            # 学生直接发送数理化题目截图（拍照搜题）
+            card_to_send = None
+            try:
+                content_obj = json.loads(message.get("content", "{}"))
+                image_key = content_obj.get("image_key", "")
+            except Exception:
+                image_key = ""
+
+            if image_key and message_id:
+                # 从飞书开放平台下载图片原始二进制数据
+                img_bytes = await download_image_resource(message_id, image_key)
+                if img_bytes:
+                    # 调用多模态大模型进行数理化视觉题目解析（优先 Pro 推理模型）
+                    vision_answer = await generate_suzhou_vision_answer(img_bytes)
+                    out_check = check_for_out_of_bounds(vision_answer)
+                    if out_check["is_safe"]:
+                        card_to_send = build_qa_result_card("📸 学生试卷/习题截图题目", vision_answer, "数理化图像解析")
+                    else:
+                        card_to_send = {
+                            "config": {"wide_screen_mode": True},
+                            "header": {"template": "red", "title": {"tag": "plain_text", "content": "🛡️ 防超纲安全拦截"}},
+                            "elements": [
+                                {
+                                    "tag": "div",
+                                    "text": {"tag": "lark_md", "content": f"**检测到题目包含高中超纲内容**：`{out_check['violations']}`。\n\n苏九学伴严格遵循苏州市初中学业水平考试要求，不使用高中方法。请确认题目是否为初三内容。"}
+                                },
+                                {
+                                    "tag": "action",
+                                    "actions": [{"tag": "button", "text": {"tag": "plain_text", "content": "🔙 返回主菜单"}, "type": "default", "value": {"action": "back_to_menu"}}]
+                                }
+                            ]
+                        }
+                else:
+                    card_to_send = {
+                        "config": {"wide_screen_mode": True},
+                        "header": {"template": "orange", "title": {"tag": "plain_text", "content": "⚠️ 图片读取提示"}},
+                        "elements": [
+                            {
+                                "tag": "div",
+                                "text": {"tag": "lark_md", "content": "未能读取到截图。请检查飞书开放平台应用权限中是否已勾选开通 **`im:resource`（获取与上传图片或文件资源）** 权限。"}
+                            }
+                        ]
+                    }
 
             if card_to_send and message_id:
                 await reply_interactive_card(message_id, card_to_send)

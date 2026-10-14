@@ -7,6 +7,7 @@
 """
 import os
 import re
+import base64
 import httpx
 from dotenv import load_dotenv
 from guardrail import SUZHOU_GRADE9_SYSTEM_PROMPT
@@ -156,3 +157,76 @@ async def generate_suzhou_answer(question: str, subject: str = "初三综合") -
                 print(f"[Model {model_name} Exception] {e}")
 
     return ""
+
+async def generate_suzhou_vision_answer(image_bytes: bytes, user_prompt: str = "", mime_type: str = "image/jpeg") -> str:
+    """
+    多模态数理化截图智能解析：
+    接收学生上传的试卷/习题截图，自动调用多模态大模型（理科旗舰 Pro 模型优先）提取题目与几何/函数图形并输出解题规范。
+    """
+    if not image_bytes:
+        return "未能成功读取到截图文件，请重新截图发送。"
+
+    api_key = os.getenv("AI_API_KEY", "").strip()
+    if not api_key:
+        return "当前尚未配置大模型 API Key，暂无法进行图像智能解析。"
+
+    provider_key = os.getenv("AI_PROVIDER", "gemini").lower().strip()
+    preset = SUPPORTED_PROVIDERS.get(provider_key, SUPPORTED_PROVIDERS["gemini"])
+    base_url = os.getenv("AI_BASE_URL", "").strip() or preset["base_url"]
+    
+    # 截图解题默认优先调用理科推理模型（如 gemini-pro-latest），并设置 flash 备选降级
+    pro_model = os.getenv("AI_MODEL_STEM", "").strip() or preset.get("stem_model", "gemini-pro-latest")
+    flash_model = os.getenv("AI_MODEL_HUMANITIES", "").strip() or preset.get("humanities_model", "gemini-flash-latest")
+    candidate_models = [pro_model]
+    if pro_model != flash_model:
+        candidate_models.append(flash_model)
+
+    b64_image = base64.b64encode(image_bytes).decode("utf-8")
+    data_url = f"data:{mime_type};base64,{b64_image}"
+
+    instruction = (
+        "【苏州市九年级中考数理化截图解题规范】\n"
+        "请仔细观察这张初三题目截图（注意题目中的文字、几何图形、坐标系、电路图或化学反应装置）：\n"
+        "1. 【题目条件提取】：准确转写截图中的已知条件与求证/求值问题；\n"
+        "2. 【考点与定理依据】：明确指出涉及的苏科版九年级教材章节（如圆周角定理、二次函数顶点式、相似三角形比、欧姆定律等）；\n"
+        "3. 【规范解题步骤】：符合苏州中考评分标准的推导过程，写明设元、辅助线构造及关键计算，不跳步、不使用高中超纲知识；\n"
+        "4. 【中考易错点警示】：指出该题型在阅卷中学生常犯的丢分陷阱（如定义域、检验根、单位、取值范围分类讨论）。"
+    )
+    if user_prompt:
+        instruction += f"\n学生补充要求：{user_prompt}"
+
+    headers = {
+        "Authorization": f"Bearer {api_key}",
+        "Content-Type": "application/json"
+    }
+    endpoint = f"{base_url.rstrip('/')}/chat/completions"
+
+    async with httpx.AsyncClient(timeout=45) as client:
+        for model_name in candidate_models:
+            payload = {
+                "model": model_name,
+                "messages": [
+                    {"role": "system", "content": SUZHOU_GRADE9_SYSTEM_PROMPT},
+                    {
+                        "role": "user",
+                        "content": [
+                            {"type": "text", "text": instruction},
+                            {"type": "image_url", "image_url": {"url": data_url}}
+                        ]
+                    }
+                ],
+                "temperature": 0.2
+            }
+            try:
+                resp = await client.post(endpoint, headers=headers, json=payload)
+                if resp.status_code == 200:
+                    data = resp.json()
+                    if "choices" in data and len(data["choices"]) > 0:
+                        return data["choices"][0]["message"]["content"].strip()
+                else:
+                    print(f"[Vision Model {model_name} HTTP {resp.status_code}] Trying fallback: {resp.text[:120]}")
+            except Exception as e:
+                print(f"[Vision Model {model_name} Exception] {e}")
+
+    return "识别题目截图时服务繁忙，请稍后重新发送或直接输入文字提问。"
+

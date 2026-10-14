@@ -98,3 +98,30 @@ async def send_chat_card(chat_id: str, card_content: dict) -> bool:
         except Exception as e:
             print(f"[Feishu Send Chat Card Exception] {e}")
     return False
+
+async def download_image_resource(message_id: str, image_key: str) -> bytes:
+    """
+    根据 message_id 与 image_key 从飞书开放平台下载用户发送的题目截图原始数据
+    """
+    token = await get_tenant_access_token()
+    if not token:
+        print("[Feishu] 未获取到有效 token，无法下载图片")
+        return b""
+
+    url = f"https://open.feishu.cn/open-apis/im/v1/messages/{message_id}/resources/{image_key}?type=image"
+    headers = {
+        "Authorization": f"Bearer {token}"
+    }
+
+    async with httpx.AsyncClient(timeout=25) as client:
+        try:
+            resp = await client.get(url, headers=headers)
+            if resp.status_code == 200:
+                return resp.content
+            else:
+                print(f"[Feishu Download Image Failed] status={resp.status_code}, text={resp.text[:120]}")
+        except Exception as e:
+            print(f"[Feishu Download Image Exception] {e}")
+
+    return b""
+
