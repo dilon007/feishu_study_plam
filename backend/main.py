@@ -200,11 +200,13 @@ async def feishu_event_handler(request: Request):
 async def get_model_status():
     """查看当前激活的大模型配置与系统预设的全部支持厂商"""
     return {
-        "active_config": get_current_model_config(),
+        "active_humanities": get_current_model_config("humanities"),
+        "active_stem": get_current_model_config("stem"),
         "supported_providers": {
             k: {
                 "name": v["name"],
-                "default_model": v["default_model"],
+                "humanities_model": v.get("humanities_model", ""),
+                "stem_model": v.get("stem_model", ""),
                 "description": v["description"]
             }
             for k, v in SUPPORTED_PROVIDERS.items()
