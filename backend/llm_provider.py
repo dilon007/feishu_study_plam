@@ -20,8 +20,8 @@ SUPPORTED_PROVIDERS = {
     "gemini": {
         "name": "Google Gemini",
         "base_url": "https://generativelanguage.googleapis.com/v1beta/openai/",
-        "humanities_model": "gemini-1.5-flash",
-        "stem_model": "gemini-1.5-pro",
+        "humanities_model": "gemini-flash-latest",
+        "stem_model": "gemini-pro-latest",
         "description": "谷歌旗舰模型：文科用 Flash 秒级出句法主旨；理科用 Pro 深度推导二次函数与几何证明。"
     },
     "deepseek": {
