@@ -1,14 +1,86 @@
 """
 苏九学伴 - 飞书原生交互卡片 (Interactive Card v2) 渲染器
-负责构建符合飞书规范的助学菜单卡片、生词解析卡片、古文查询卡片。
+设计规范：以“科目优先选择”为核心流程，支持数学、物理、化学、英语、语文、道法历史专属答疑台。
 """
-import json
 
-WEB_DASHBOARD_URL = "https://dilonclaw.cloud/suzhou/welcome"
+SUBJECT_METAS = {
+    "math": {
+        "name": "九年级数学",
+        "book": "苏科版（九上/九下）",
+        "icon": "📐",
+        "color": "orange",
+        "description": "已锁定苏科版数学考纲。已接入 **Gemini Pro 深度推导**，擅长二次函数综合、圆与三角形辅助线证明、一元二次方程。",
+        "quick_topics": [
+            {"label": "二次函数最值", "val": "二次函数最值"},
+            {"label": "圆的切线性质", "val": "圆的切线证明"},
+            {"label": "相似三角形", "val": "相似三角形判定与性质"}
+        ]
+    },
+    "physics": {
+        "name": "九年级物理",
+        "book": "苏科版九年级物理",
+        "icon": "⚡",
+        "color": "blue",
+        "description": "已锁定苏科版物理考纲。已接入 **Gemini Pro 深度推导**，擅长动态电路分析、欧姆定律、电功率极值、滑轮机械效率。",
+        "quick_topics": [
+            {"label": "欧姆定律动态电路", "val": "欧姆定律"},
+            {"label": "电功率计算", "val": "电功率"},
+            {"label": "杠杆与滑轮机械效率", "val": "杠杆与滑轮"}
+        ]
+    },
+    "chemistry": {
+        "name": "九年级化学",
+        "book": "苏州市初中化学考标",
+        "icon": "⚗️",
+        "color": "purple",
+        "description": "已锁定初三化学考标。已接入 **Gemini Pro 深度推导**，擅长酸碱盐推断题、滤渣滤液成分分析、气体制备实验装置探究。",
+        "quick_topics": [
+            {"label": "酸碱盐复分解推断", "val": "酸碱盐"},
+            {"label": "气体制备与净化", "val": "气体制备"},
+            {"label": "金属活动性置换", "val": "金属活动性"}
+        ]
+    },
+    "english": {
+        "name": "九年级英语",
+        "book": "译林牛津版（9A/9B）",
+        "icon": "🅰️",
+        "color": "wathet",
+        "description": "已锁定译林版英语教材。已接入 **Gemini Flash 极速引擎** 与本地生词库，擅长生词中考搭配、语法专项、推荐信写作批改。",
+        "quick_topics": [
+            {"label": "生词: generous", "val": "generous"},
+            {"label": "生词: curious", "val": "curious"},
+            {"label": "生词: achieve", "val": "achieve"}
+        ]
+    },
+    "chinese": {
+        "name": "九年级语文",
+        "book": "统编部编版九年级",
+        "icon": "📜",
+        "color": "turquoise",
+        "description": "已锁定统编版语文考纲。已接入本地必背文言文诗词库与 Flash 引擎，擅长文言实词通假字、古诗主旨赏析、默写填空。",
+        "quick_topics": [
+            {"label": "《岳阳楼记》考点", "val": "岳阳楼记"},
+            {"label": "《醉翁亭记》考点", "val": "醉翁亭记"},
+            {"label": "《出师表》必背", "val": "出师表"}
+        ]
+    },
+    "politics": {
+        "name": "道法 & 历史",
+        "book": "统编版·中考开卷专题",
+        "icon": "🏛️",
+        "color": "indigo",
+        "description": "已锁定苏州中考开卷考查专题。擅长常态化时政分析、中国近代史事件梳理与大题答题模板提取。",
+        "quick_topics": [
+            {"label": "开卷答题技巧", "val": "道法大题答题规范模板"},
+            {"label": "近代化探索梳理", "val": "中国近代史探索三大阶段"}
+        ]
+    }
+}
 
 def build_menu_card() -> dict:
     """
-    构建助学主菜单卡片（当用户在群聊/单聊输入 @助手 或 菜单 时触发）
+    第一步：科目导航主菜单卡片
+    引导学生先选择学科，极大提高解答的专业度与上下文针对性
     """
     return {
         "config": {
@@ -18,7 +90,7 @@ def build_menu_card() -> dict:
             "template": "blue",
             "title": {
                 "tag": "plain_text",
-                "content": "🎓 苏九学伴 · 苏州市9年级专属助学菜单"
+                "content": "🎓 苏九学伴 · 请先选择提问科目"
             }
         },
         "elements": [
@@ -26,59 +98,53 @@ def build_menu_card() -> dict:
                 "tag": "div",
                 "text": {
                     "tag": "lark_md",
-                    "content": "你好！我是你的初三专属学习助手。所有内容严格对齐 **苏州市九年级中考考纲**（苏科版/译林版/统编版），**已启动防超纲围栏** 🛡️。\n\n请选择你需要的功能或直接在下方输入："
+                    "content": "**你好，初三学子！** 为了给你最精准的苏州中考答疑，请先选择你当前正在复习的学科。\n\n锁定科目后将自动匹配 **苏科版/译林版教材规范** 与 **专属模型算力**（数理化默认启用 Gemini Pro 深度推理）："
                 }
             },
+            {"tag": "hr"},
             {
-                "tag": "hr"
+                "tag": "action",
+                "actions": [
+                    {
+                        "tag": "button",
+                        "text": {"tag": "plain_text", "content": "📐 数学 (苏科版)"},
+                        "type": "primary",
+                        "value": {"action": "select_subject", "subject": "math"}
+                    },
+                    {
+                        "tag": "button",
+                        "text": {"tag": "plain_text", "content": "⚡ 物理 (苏科版)"},
+                        "type": "primary",
+                        "value": {"action": "select_subject", "subject": "physics"}
+                    },
+                    {
+                        "tag": "button",
+                        "text": {"tag": "plain_text", "content": "⚗️ 化学 (初三化学)"},
+                        "type": "primary",
+                        "value": {"action": "select_subject", "subject": "chemistry"}
+                    }
+                ]
             },
             {
                 "tag": "action",
                 "actions": [
                     {
                         "tag": "button",
-                        "text": {
-                            "tag": "plain_text",
-                            "content": "🅰️ 译林版单词查询"
-                        },
-                        "type": "primary",
-                        "value": {
-                            "action": "switch_mode",
-                            "mode": "english"
-                        }
+                        "text": {"tag": "plain_text", "content": "🅰️ 英语 (译林版)"},
+                        "type": "default",
+                        "value": {"action": "select_subject", "subject": "english"}
                     },
                     {
                         "tag": "button",
-                        "text": {
-                            "tag": "plain_text",
-                            "content": "📜 统编版古文速查"
-                        },
+                        "text": {"tag": "plain_text", "content": "📜 语文 (统编版)"},
                         "type": "default",
-                        "value": {
-                            "action": "switch_mode",
-                            "mode": "ancient"
-                        }
+                        "value": {"action": "select_subject", "subject": "chinese"}
                     },
                     {
                         "tag": "button",
-                        "text": {
-                            "tag": "plain_text",
-                            "content": "📐 苏科版数理考点"
-                        },
+                        "text": {"tag": "plain_text", "content": "🏛️ 道法 & 历史"},
                         "type": "default",
-                        "value": {
-                            "action": "switch_mode",
-                            "mode": "math"
-                        }
-                    },
-                    {
-                        "tag": "button",
-                        "text": {
-                            "tag": "plain_text",
-                            "content": "📖 网页看板"
-                        },
-                        "type": "default",
-                        "url": WEB_DASHBOARD_URL
+                        "value": {"action": "select_subject", "subject": "politics"}
                     }
                 ]
             },
@@ -87,7 +153,156 @@ def build_menu_card() -> dict:
                 "elements": [
                     {
                         "tag": "plain_text",
-                        "content": "💡 快捷提示：你也可以在会话中直接发送单词 (如 generous) 或古文 (如 岳阳楼记) 快速检索。"
+                        "content": "📸 提示：做题遇到困难？选好科目后直接拍照或截屏发到聊天框即可！"
+                    }
+                ]
+            }
+        ]
+    }
+
+def build_subject_workbench_card(subject_key: str) -> dict:
+    """
+    第二步：学科专属答疑台卡片
+    展示当前学科的教材定位、快捷典型题考点、以及拍照/打字输入指引
+    """
+    meta = SUBJECT_METAS.get(subject_key, SUBJECT_METAS["math"])
+
+    topic_buttons = []
+    for item in meta["quick_topics"]:
+        topic_buttons.append({
+            "tag": "button",
+            "text": {"tag": "plain_text", "content": item["label"]},
+            "type": "default",
+            "value": {
+                "action": "quick_topic",
+                "subject": subject_key,
+                "topic": item["val"]
+            }
+        })
+
+    elements = [
+        {
+            "tag": "div",
+            "text": {
+                "tag": "lark_md",
+                "content": f"**当前已锁定【{meta['name']}】专属答疑台** 🎯\n\n📌 **教材标准**：{meta['book']}\n💡 **能力说明**：{meta['description']}"
+            }
+        },
+        {"tag": "hr"},
+        {
+            "tag": "div",
+            "text": {
+                "tag": "lark_md",
+                "content": "👇 **常考中考高频专题（点击直接查看核心解析）：**"
+            }
+        },
+        {
+            "tag": "action",
+            "actions": topic_buttons
+        },
+        {"tag": "hr"},
+        {
+            "tag": "div",
+            "text": {
+                "tag": "lark_md",
+                "content": "💬 **如何提问：**\n1. 📸 **直接发送题目截图**：自动识别几何图、坐标系或电路图，分步推导；\n2. ✍️ **直接打字输入**：发送题目文字或具体疑惑知识点；\n3. 随时点击下方按钮可更换其他学科。"
+            }
+        },
+        {
+            "tag": "action",
+            "actions": [
+                {
+                    "tag": "button",
+                    "text": {"tag": "plain_text", "content": "🔙 更换其他科目"},
+                    "type": "default",
+                    "value": {"action": "back_to_menu"}
+                }
+            ]
+        }
+    ]
+
+    return {
+        "config": {"wide_screen_mode": True},
+        "header": {
+            "template": meta["color"],
+            "title": {
+                "tag": "plain_text",
+                "content": f"{meta['icon']} {meta['name']} · 专属答疑台"
+            }
+        },
+        "elements": elements
+    }
+
+def build_physics_card(data: dict) -> dict:
+    """构建物理考点卡片"""
+    kp_md = "\n".join([f"• {k}" for k in data.get("key_points", [])])
+    return {
+        "config": {"wide_screen_mode": True},
+        "header": {
+            "template": "blue",
+            "title": {"tag": "plain_text", "content": f"⚡ 苏科版物理 · {data['title']}"}
+        },
+        "elements": [
+            {
+                "tag": "div",
+                "text": {
+                    "tag": "lark_md",
+                    "content": f"**教材定位**：{data['book']}\n**核心公式**：`{data['formula']}`\n\n**【考点梳理与推演要点】**\n{kp_md}\n\n🎯 **{data['exam_tips']}**"
+                }
+            },
+            {"tag": "hr"},
+            {
+                "tag": "action",
+                "actions": [
+                    {
+                        "tag": "button",
+                        "text": {"tag": "plain_text", "content": "🔙 返回物理工作台"},
+                        "type": "default",
+                        "value": {"action": "select_subject", "subject": "physics"}
+                    },
+                    {
+                        "tag": "button",
+                        "text": {"tag": "plain_text", "content": "🔄 换其他科目"},
+                        "type": "default",
+                        "value": {"action": "back_to_menu"}
+                    }
+                ]
+            }
+        ]
+    }
+
+def build_chemistry_card(data: dict) -> dict:
+    """构建化学考点卡片"""
+    kp_md = "\n".join([f"• {k}" for k in data.get("key_points", [])])
+    return {
+        "config": {"wide_screen_mode": True},
+        "header": {
+            "template": "purple",
+            "title": {"tag": "plain_text", "content": f"⚗️ 初三化学 · {data['title']}"}
+        },
+        "elements": [
+            {
+                "tag": "div",
+                "text": {
+                    "tag": "lark_md",
+                    "content": f"**专题归属**：{data['book']}\n**核心判据/方程式**：`{data['formula']}`\n\n**【复习重点与实验突破】**\n{kp_md}\n\n🎯 **{data['exam_tips']}**"
+                }
+            },
+            {"tag": "hr"},
+            {
+                "tag": "action",
+                "actions": [
+                    {
+                        "tag": "button",
+                        "text": {"tag": "plain_text", "content": "🔙 返回化学工作台"},
+                        "type": "default",
+                        "value": {"action": "select_subject", "subject": "chemistry"}
+                    },
+                    {
+                        "tag": "button",
+                        "text": {"tag": "plain_text", "content": "🔄 换其他科目"},
+                        "type": "default",
+                        "value": {"action": "back_to_menu"}
                     }
                 ]
             }
@@ -95,9 +310,7 @@ def build_menu_card() -> dict:
     }
 
 def build_word_card(info: dict) -> dict:
-    """
-    构建译林版英语单词解析卡片
-    """
+    """构建译林版英语单词解析卡片"""
     if not info.get("matched"):
         word = info.get("word", "")
         return {
@@ -117,12 +330,7 @@ def build_word_card(info: dict) -> dict:
                 {
                     "tag": "action",
                     "actions": [
-                        {
-                            "tag": "button",
-                            "text": {"tag": "plain_text", "content": "🔙 返回主菜单"},
-                            "type": "default",
-                            "value": {"action": "back_to_menu"}
-                        }
+                        {"tag": "button", "text": {"tag": "plain_text", "content": "🔙 返回英语工作台"}, "type": "default", "value": {"action": "select_subject", "subject": "english"}}
                     ]
                 }
             ]
@@ -147,17 +355,11 @@ def build_word_card(info: dict) -> dict:
                 "fields": [
                     {
                         "is_short": True,
-                        "text": {
-                            "tag": "lark_md",
-                            "content": f"**音标**：`{data['phonetic']}`\n**词性**：{data['pos']}"
-                        }
+                        "text": {"tag": "lark_md", "content": f"**音标**：`{data['phonetic']}`\n**词性**：{data['pos']}"}
                     },
                     {
                         "is_short": True,
-                        "text": {
-                            "tag": "lark_md",
-                            "content": f"**课本定位**：\n{data['unit']}"
-                        }
+                        "text": {"tag": "lark_md", "content": f"**课本定位**：\n{data['unit']}"}
                     }
                 ]
             },
@@ -180,27 +382,15 @@ def build_word_card(info: dict) -> dict:
             {
                 "tag": "action",
                 "actions": [
-                    {
-                        "tag": "button",
-                        "text": {"tag": "plain_text", "content": "🔙 返回主菜单"},
-                        "type": "default",
-                        "value": {"action": "back_to_menu"}
-                    },
-                    {
-                        "tag": "button",
-                        "text": {"tag": "plain_text", "content": "📖 单词默写训练"},
-                        "type": "primary",
-                        "url": WEB_DASHBOARD_URL
-                    }
+                    {"tag": "button", "text": {"tag": "plain_text", "content": "🔙 返回英语工作台"}, "type": "default", "value": {"action": "select_subject", "subject": "english"}},
+                    {"tag": "button", "text": {"tag": "plain_text", "content": "🔄 换其他科目"}, "type": "default", "value": {"action": "back_to_menu"}}
                 ]
             }
         ]
     }
 
 def build_ancient_card(info: dict) -> dict:
-    """
-    构建统编版九年级文言文/古诗词解析卡片
-    """
+    """构建统编版九年级文言文/古诗词解析卡片"""
     if not info.get("matched"):
         title = info.get("title", "")
         return {
@@ -220,12 +410,7 @@ def build_ancient_card(info: dict) -> dict:
                 {
                     "tag": "action",
                     "actions": [
-                        {
-                            "tag": "button",
-                            "text": {"tag": "plain_text", "content": "🔙 返回主菜单"},
-                            "type": "default",
-                            "value": {"action": "back_to_menu"}
-                        }
+                        {"tag": "button", "text": {"tag": "plain_text", "content": "🔙 返回语文工作台"}, "type": "default", "value": {"action": "select_subject", "subject": "chinese"}}
                     ]
                 }
             ]
@@ -250,17 +435,11 @@ def build_ancient_card(info: dict) -> dict:
                 "fields": [
                     {
                         "is_short": True,
-                        "text": {
-                            "tag": "lark_md",
-                            "content": f"**作者**：{data['author']}"
-                        }
+                        "text": {"tag": "lark_md", "content": f"**作者**：{data['author']}"}
                     },
                     {
                         "is_short": True,
-                        "text": {
-                            "tag": "lark_md",
-                            "content": f"**教材归属**：\n{data['book']}"
-                        }
+                        "text": {"tag": "lark_md", "content": f"**教材归属**：\n{data['book']}"}
                     }
                 ]
             },
@@ -283,66 +462,14 @@ def build_ancient_card(info: dict) -> dict:
             {
                 "tag": "action",
                 "actions": [
-                    {
-                        "tag": "button",
-                        "text": {"tag": "plain_text", "content": "🔙 返回主菜单"},
-                        "type": "default",
-                        "value": {"action": "back_to_menu"}
-                    },
-                    {
-                        "tag": "button",
-                        "text": {"tag": "plain_text", "content": "📖 查看全篇译文"},
-                        "type": "primary",
-                        "url": WEB_DASHBOARD_URL
-                    }
+                    {"tag": "button", "text": {"tag": "plain_text", "content": "🔙 返回语文工作台"}, "type": "default", "value": {"action": "select_subject", "subject": "chinese"}},
+                    {"tag": "button", "text": {"tag": "plain_text", "content": "🔄 换其他科目"}, "type": "default", "value": {"action": "back_to_menu"}}
                 ]
             }
         ]
     }
 
-def build_mode_input_card(mode: str) -> dict:
-    """
-    当学生点击了特定功能（如单词查询、古文查询）后的引导卡片
-    """
-    if mode == "english":
-        title = "🅰️ 译林版初三英语词汇查询"
-        tip = "请在聊天框中直接发送你要查询的英文单词，例如：\n• `generous`\n• `curious`\n• `achieve`\n• `patient`"
-    elif mode == "ancient":
-        title = "📜 统编版九年级古文古诗速查"
-        tip = "请在聊天框中直接发送篇目名或名句，例如：\n• `岳阳楼记`\n• `醉翁亭记`\n• `出师表`\n• `先天下之忧而忧`"
-    else:
-        title = "📐 苏科版九年级数理考点速查"
-        tip = "请在聊天框中发送数理考点，例如：\n• `二次函数顶点式`\n• `一元二次方程根的判别式`\n• `简单机械滑轮组`"
-
-    return {
-        "config": {"wide_screen_mode": True},
-        "header": {
-            "template": "indigo",
-            "title": {"tag": "plain_text", "content": title}
-        },
-        "elements": [
-            {
-                "tag": "div",
-                "text": {
-                    "tag": "lark_md",
-                    "content": f"**已切换至专项查询模式** 🎯\n\n{tip}"
-                }
-            },
-            {
-                "tag": "action",
-                "actions": [
-                    {
-                        "tag": "button",
-                        "text": {"tag": "plain_text", "content": "🔙 返回主菜单"},
-                        "type": "default",
-                        "value": {"action": "back_to_menu"}
-                    }
-                ]
-            }
-        ]
-    }
-
-def build_qa_result_card(question: str, answer: str, subject: str = "初三答疑") -> dict:
+def build_qa_result_card(question: str, answer: str, subject_label: str = "初三答疑", current_subject: str = "math") -> dict:
     """
     构建符合苏州初三中考规范的 AI 答疑解析卡片
     """
@@ -350,14 +477,14 @@ def build_qa_result_card(question: str, answer: str, subject: str = "初三答�
         "config": {"wide_screen_mode": True},
         "header": {
             "template": "blue",
-            "title": {"tag": "plain_text", "content": f"🎓 苏九名师答疑 · {subject}"}
+            "title": {"tag": "plain_text", "content": f"🎓 苏九名师答疑 · {subject_label}"}
         },
         "elements": [
             {
                 "tag": "div",
                 "text": {
                     "tag": "lark_md",
-                    "content": f"**【提问题目】**：\n{question}"
+                    "content": f"**【题目/考点】**：\n{question}"
                 }
             },
             {"tag": "hr"},
@@ -365,7 +492,7 @@ def build_qa_result_card(question: str, answer: str, subject: str = "初三答�
                 "tag": "div",
                 "text": {
                     "tag": "lark_md",
-                    "content": f"**【苏科版/苏州考纲规范解析】**：\n\n{answer}"
+                    "content": f"**【规范踩分解答步骤】**：\n\n{answer}"
                 }
             },
             {"tag": "hr"},
@@ -374,18 +501,17 @@ def build_qa_result_card(question: str, answer: str, subject: str = "初三答�
                 "actions": [
                     {
                         "tag": "button",
-                        "text": {"tag": "plain_text", "content": "🔙 返回主菜单"},
+                        "text": {"tag": "plain_text", "content": f"🔙 返回本学科工作台"},
                         "type": "default",
-                        "value": {"action": "back_to_menu"}
+                        "value": {"action": "select_subject", "subject": current_subject}
                     },
                     {
                         "tag": "button",
-                        "text": {"tag": "plain_text", "content": "📖 错题本整理"},
-                        "type": "primary",
-                        "url": WEB_DASHBOARD_URL
+                        "text": {"tag": "plain_text", "content": "🔄 切换其他学科"},
+                        "type": "default",
+                        "value": {"action": "back_to_menu"}
                     }
                 ]
             }
         ]
     }
-

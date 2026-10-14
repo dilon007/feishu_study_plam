@@ -7,8 +7,15 @@ import json
 import re
 
 from guardrail import SUZHOU_GRADE9_SYSTEM_PROMPT, check_for_out_of_bounds
-from knowledge_db import query_english_word, query_ancient_text
-from card_builder import build_menu_card, build_word_card, build_ancient_card, build_mode_input_card, build_qa_result_card
+from knowledge_db import (
+    query_english_word, query_ancient_text,
+    query_physics_concept, query_chemistry_concept
+)
+from card_builder import (
+    SUBJECT_METAS, build_menu_card, build_subject_workbench_card,
+    build_physics_card, build_chemistry_card, build_word_card,
+    build_ancient_card, build_qa_result_card
+)
 from feishu_client import reply_interactive_card, send_chat_card, download_image_resource
 from llm_provider import generate_suzhou_answer, generate_suzhou_vision_answer, get_current_model_config, SUPPORTED_PROVIDERS
 import httpx
@@ -19,8 +26,13 @@ load_dotenv()
 app = FastAPI(
     title="苏九学伴 - 学习助手中台",
     description="针对苏州市9年级学生的学习助手中台后端 API 与飞书消息机器人引擎",
-    version="1.4.0"
+    version="1.5.0"
 )
+
+# 内存会话管理：记录每位学生当前选定的复习学科（默认为数学 math）
+# 格式：{ "open_id_or_chat_id": "physics" | "chemistry" | "math" | "english" | "chinese" | "politics" }
+user_active_subjects: dict[str, str] = {}
+
 
 # 挂载前端页面静态资源
 frontend_dir = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "frontend"))
@@ -100,12 +112,49 @@ async def feishu_event_handler(request: Request):
     if "action" in body and ("open_message_id" in body or "open_id" in body):
         action_val = body.get("action", {}).get("value", {})
         action_type = action_val.get("action")
+        sender_id = body.get("open_id") or body.get("user_id") or body.get("open_chat_id", "")
 
         if action_type == "back_to_menu":
             return {"card": build_menu_card()}
+        elif action_type == "select_subject":
+            subj = action_val.get("subject", "math")
+            if sender_id:
+                user_active_subjects[sender_id] = subj
+            return {"card": build_subject_workbench_card(subj)}
+        elif action_type == "quick_topic":
+            subj = action_val.get("subject", "math")
+            topic = action_val.get("topic", "")
+            if sender_id:
+                user_active_subjects[sender_id] = subj
+
+            if subj == "physics":
+                res = query_physics_concept(topic)
+                if res.get("matched"):
+                    return {"card": build_physics_card(res["data"])}
+                else:
+                    ans = await generate_suzhou_answer(topic, "九年级物理")
+                    return {"card": build_qa_result_card(topic, ans or "暂无解析", "九年级物理", "physics")}
+            elif subj == "chemistry":
+                res = query_chemistry_concept(topic)
+                if res.get("matched"):
+                    return {"card": build_chemistry_card(res["data"])}
+                else:
+                    ans = await generate_suzhou_answer(topic, "九年级化学")
+                    return {"card": build_qa_result_card(topic, ans or "暂无解析", "九年级化学", "chemistry")}
+            elif subj == "english":
+                res = query_english_word(topic)
+                return {"card": build_word_card(res)}
+            elif subj == "chinese":
+                res = query_ancient_text(topic)
+                return {"card": build_ancient_card(res)}
+            else:
+                subj_name = SUBJECT_METAS.get(subj, {}).get("name", "九年级综合")
+                ans = await generate_suzhou_answer(topic, subj_name)
+                return {"card": build_qa_result_card(topic, ans or "暂无解析", subj_name, subj)}
+
         elif action_type == "switch_mode":
             mode = action_val.get("mode", "english")
-            return {"card": build_mode_input_card(mode)}
+            return {"card": build_subject_workbench_card(mode)}
         elif action_type == "query_word":
             word = action_val.get("word", "")
             res = query_english_word(word)
@@ -127,6 +176,8 @@ async def feishu_event_handler(request: Request):
         message_id = message.get("message_id")
         msg_type = message.get("message_type")
         chat_id = message.get("chat_id")
+        sender_id = event.get("sender", {}).get("sender_id", {}).get("open_id") or chat_id or "default_user"
+        active_subj = user_active_subjects.get(sender_id, "math")
 
         if msg_type == "text":
             try:
@@ -139,29 +190,49 @@ async def feishu_event_handler(request: Request):
 
             card_to_send = None
 
-            # 意图 A：@助手、呼出菜单、help、或者清空只 @了机器人
-            if not user_query or user_query in ["菜单", "menu", "help", "帮助", "开始", "助学菜单"]:
+            # 意图 1：@助手、呼出菜单、帮助、清空只 @了机器人
+            if not user_query or user_query in ["菜单", "menu", "help", "帮助", "开始", "助学菜单", "选择科目", "科目"]:
                 card_to_send = build_menu_card()
 
-            # 意图 B：英语单词查询（包含关键词或纯英文字符）
-            elif user_query.startswith("查单词") or user_query.startswith("单词") or re.match(r"^[a-zA-Z\s\-]+$", user_query):
+            # 意图 2：文字快捷切换科目（如输入“物理”、“换化学”）
+            elif any(user_query == k or user_query == f"切换{k}" or user_query == f"换{k}" or user_query == f"选{k}" for k in ["数学", "物理", "化学", "英语", "语文", "道法", "历史"]):
+                subj_map = {
+                    "数学": "math", "物理": "physics", "化学": "chemistry",
+                    "英语": "english", "语文": "chinese", "道法": "politics", "历史": "politics"
+                }
+                for k, v in subj_map.items():
+                    if k in user_query:
+                        user_active_subjects[sender_id] = v
+                        card_to_send = build_subject_workbench_card(v)
+                        break
+
+            # 意图 3：英语单词查询（包含关键词或在英语模式下的纯英文词汇）
+            elif user_query.startswith("查单词") or user_query.startswith("单词") or (active_subj == "english" and re.match(r"^[a-zA-Z\s\-]+$", user_query)):
                 search_word = re.sub(r"^(查单词|单词|word)\s*", "", user_query, flags=re.IGNORECASE).strip()
                 if not search_word:
-                    card_to_send = build_mode_input_card("english")
+                    card_to_send = build_subject_workbench_card("english")
                 else:
                     word_result = query_english_word(search_word)
-                    card_to_send = build_word_card(word_result)
+                    if word_result.get("matched"):
+                        card_to_send = build_word_card(word_result)
+                    else:
+                        llm_ans = await generate_suzhou_answer(f"初三英语考纲单词与搭配：{search_word}", "九年级英语")
+                        card_to_send = build_qa_result_card(f"单词：{search_word}", llm_ans or "词库正在收录中", "九年级英语", "english")
 
-            # 意图 C：初三古文古诗查询（篇目名称或名句）
+            # 意图 4：初三古文古诗查询（篇目名称或名句）
             elif user_query.startswith("查古文") or user_query.startswith("古文") or user_query.startswith("古诗") or any(k in user_query for k in ["岳阳楼记", "醉翁亭记", "出师表", "水调歌头", "先天下"]):
                 search_title = re.sub(r"^(查古文|古文|古诗|诗词)\s*", "", user_query).strip()
                 if not search_title:
-                    card_to_send = build_mode_input_card("ancient")
+                    card_to_send = build_subject_workbench_card("chinese")
                 else:
                     ancient_result = query_ancient_text(search_title)
-                    card_to_send = build_ancient_card(ancient_result)
+                    if ancient_result.get("matched"):
+                        card_to_send = build_ancient_card(ancient_result)
+                    else:
+                        llm_ans = await generate_suzhou_answer(f"统编九年级文言考点与释义：{search_title}", "九年级语文")
+                        card_to_send = build_qa_result_card(search_title, llm_ans or "篇目正在收录中", "九年级语文", "chinese")
 
-            # 意图 D：学科自由问答（经由防超纲安全审查 + Gemini/大模型名师解析）
+            # 意图 5：在当前激活科目下进行针对性提问（优先匹配本地考标库，未命中则调用专属大模型推导）
             else:
                 guard_check = check_for_out_of_bounds(user_query)
                 if not guard_check["is_safe"]:
@@ -175,27 +246,52 @@ async def feishu_event_handler(request: Request):
                             },
                             {
                                 "tag": "action",
-                                "actions": [{"tag": "button", "text": {"tag": "plain_text", "content": "🔙 返回助学菜单"}, "type": "default", "value": {"action": "back_to_menu"}}]
+                                "actions": [
+                                    {"tag": "button", "text": {"tag": "plain_text", "content": "🔙 返回当前工作台"}, "type": "default", "value": {"action": "select_subject", "subject": active_subj}},
+                                    {"tag": "button", "text": {"tag": "plain_text", "content": "🔄 更换学科"}, "type": "default", "value": {"action": "back_to_menu"}}
+                                ]
                             }
                         ]
                     }
                 else:
-                    # 尝试调用多模型适配引擎解答
-                    llm_answer = await generate_suzhou_answer(user_query)
-                    if llm_answer:
-                        out_check = check_for_out_of_bounds(llm_answer)
-                        if out_check["is_safe"]:
-                            card_to_send = build_qa_result_card(user_query, llm_answer)
+                    # 针对物理/化学进行本地权威知识库秒级命中
+                    if active_subj == "physics":
+                        p_res = query_physics_concept(user_query)
+                        if p_res.get("matched"):
+                            card_to_send = build_physics_card(p_res["data"])
+                    elif active_subj == "chemistry":
+                        c_res = query_chemistry_concept(user_query)
+                        if c_res.get("matched"):
+                            card_to_send = build_chemistry_card(c_res["data"])
+
+                    if not card_to_send:
+                        subj_info = SUBJECT_METAS.get(active_subj, SUBJECT_METAS["math"])
+                        llm_answer = await generate_suzhou_answer(user_query, f"{subj_info['name']} ({subj_info['book']})")
+                        if llm_answer:
+                            out_check = check_for_out_of_bounds(llm_answer)
+                            if out_check["is_safe"]:
+                                card_to_send = build_qa_result_card(user_query, llm_answer, subj_info["name"], active_subj)
+                            else:
+                                card_to_send = {
+                                    "config": {"wide_screen_mode": True},
+                                    "header": {"template": "red", "title": {"tag": "plain_text", "content": "🛡️ 答题输出防超纲拦截"}},
+                                    "elements": [
+                                        {"tag": "div", "text": {"tag": "lark_md", "content": f"生成内容包含高中超纲内容：`{out_check['violations']}`，已熔断保护。请换个问法。"}},
+                                        {"tag": "action", "actions": [{"tag": "button", "text": {"tag": "plain_text", "content": "🔙 返回工作台"}, "type": "default", "value": {"action": "select_subject", "subject": active_subj}}]}
+                                    ]
+                                }
                         else:
-                            card_to_send = build_menu_card()
-                    else:
-                        card_to_send = build_menu_card()
+                            card_to_send = build_subject_workbench_card(active_subj)
 
             if card_to_send and message_id:
                 await reply_interactive_card(message_id, card_to_send)
 
         elif msg_type == "image":
             # 学生直接发送数理化题目截图（拍照搜题）
+            sender_id = event.get("sender", {}).get("sender_id", {}).get("open_id") or chat_id or "default_user"
+            active_subj = user_active_subjects.get(sender_id, "math")
+            subj_info = SUBJECT_METAS.get(active_subj, SUBJECT_METAS["math"])
+
             card_to_send = None
             try:
                 content_obj = json.loads(message.get("content", "{}"))
@@ -207,11 +303,17 @@ async def feishu_event_handler(request: Request):
                 # 从飞书开放平台下载图片原始二进制数据
                 img_bytes = await download_image_resource(message_id, image_key)
                 if img_bytes:
+                    prompt_hint = f"当前复习学科：{subj_info['name']}，匹配教材考标：{subj_info['book']}。"
                     # 调用多模态大模型进行数理化视觉题目解析（优先 Pro 推理模型）
-                    vision_answer = await generate_suzhou_vision_answer(img_bytes)
+                    vision_answer = await generate_suzhou_vision_answer(img_bytes, user_prompt=prompt_hint)
                     out_check = check_for_out_of_bounds(vision_answer)
                     if out_check["is_safe"]:
-                        card_to_send = build_qa_result_card("📸 学生试卷/习题截图题目", vision_answer, "数理化图像解析")
+                        card_to_send = build_qa_result_card(
+                            "📸 学生试卷/习题截图题目",
+                            vision_answer,
+                            f"{subj_info['name']} 图像解析",
+                            active_subj
+                        )
                     else:
                         card_to_send = {
                             "config": {"wide_screen_mode": True},
@@ -223,7 +325,10 @@ async def feishu_event_handler(request: Request):
                                 },
                                 {
                                     "tag": "action",
-                                    "actions": [{"tag": "button", "text": {"tag": "plain_text", "content": "🔙 返回主菜单"}, "type": "default", "value": {"action": "back_to_menu"}}]
+                                    "actions": [
+                                        {"tag": "button", "text": {"tag": "plain_text", "content": f"🔙 返回{subj_info['name']}工作台"}, "type": "default", "value": {"action": "select_subject", "subject": active_subj}},
+                                        {"tag": "button", "text": {"tag": "plain_text", "content": "🔄 更换学科"}, "type": "default", "value": {"action": "back_to_menu"}}
+                                    ]
                                 }
                             ]
                         }
@@ -266,6 +371,23 @@ async def get_model_status():
 async def test_menu_card():
     """测试获取助学菜单卡片 JSON"""
     return build_menu_card()
+
+@app.get("/api/test/subject_card")
+async def test_subject_card(subject: str = "physics"):
+    """测试获取各学科专属答疑台卡片 JSON"""
+    return build_subject_workbench_card(subject)
+
+@app.get("/api/test/physics_card")
+async def test_physics_card(topic: str = "欧姆定律"):
+    """测试获取苏科版物理考点卡片 JSON"""
+    res = query_physics_concept(topic)
+    return build_physics_card(res["data"]) if res.get("matched") else res
+
+@app.get("/api/test/chemistry_card")
+async def test_chemistry_card(topic: str = "酸碱盐"):
+    """测试获取初三化学考点卡片 JSON"""
+    res = query_chemistry_concept(topic)
+    return build_chemistry_card(res["data"]) if res.get("matched") else res
 
 @app.get("/api/test/word_card")
 async def test_word_card(word: str = "generous"):

@@ -175,12 +175,87 @@ TONGBIAN_ANCIENT_DICT = {
             "千里共婵娟：婵娟，指月亮。"
         ],
         "main_idea": "词人中秋望月怀念胞弟苏辙，由幻想出世转为眷恋人间，抒发对人生的旷达胸襟与对天下离人的美好祝愿。",
-        "exam_spot": "【苏州中考必考点】名篇名句默写；‘婵娟’借代修辞；‘此事古难全’蕴含的辩证哲理赏析。"
     }
 }
 
 # ==========================================
-# 3. 智能检索辅助函数
+# 3. 苏科版九年级物理核心考点库
+# ==========================================
+SUKE_PHYSICS_DICT = {
+    "欧姆定律": {
+        "title": "欧姆定律与动态电路分析",
+        "book": "苏科版九年级物理上册·第十四章",
+        "formula": "I = U / R  (变形: U = IR, R = U / I)",
+        "key_points": [
+            "串联电路：电流处处相等 (I=I1=I2)，总电压等于各分电压之和 (U=U1+U2)，分压原理 U1/U2 = R1/R2。",
+            "并联电路：各支路两端电压相等 (U=U1=U2)，干路电流等于各支路电流之和 (I=I1+I2)，分流原理 I1/I2 = R2/R1。",
+            "动态电路解题秘籍：先判断电路串并联 ➔ 确定电表所测对象 ➔ 依据滑片移动判断滑动变阻器连入阻值变化 ➔ 结合欧姆定律推导各表示数变化。"
+        ],
+        "exam_tips": "【苏州中考必考点】每年必考动态电路分析与电表量程安全保护计算，注意电表不可超量程！"
+    },
+    "电功率": {
+        "title": "电功、电功率与焦耳定律",
+        "book": "苏科版九年级物理下册·第十五章",
+        "formula": "P = W / t = UI；纯电阻电路推导式: P = I²R = U² / R；焦耳定律: Q = I²Rt",
+        "key_points": [
+            "额定功率与实际功率：灯泡亮度由【实际电功率】决定，实际电压等于额定电压时实际功率才等于额定功率。",
+            "电热计算与防止：电热器工作时电能全部转化为内能 (Q=W=Pt)；非纯电阻电路 (如电动机) W = UIt > Q = I²Rt。"
+        ],
+        "exam_tips": "【苏州中考压轴计算】常见于电学极值范围题：结合滑动变阻器最大允许电流、电压表量程、电流表量程列不等式组求解阻值范围。"
+    },
+    "杠杆与滑轮": {
+        "title": "简单机械（杠杆、滑轮与机械效率）",
+        "book": "苏科版九年级物理上册·第十一章",
+        "formula": "杠杆平衡: F1·L1 = F2·L2；滑轮组拉力: F = (G物 + G动) / n；机械效率: η = W有 / W总 = Gh / Fs = G / (nF)",
+        "key_points": [
+            "力臂作图三步法：找支点 O ➔ 画力的作用线 (虚线延长) ➔ 从支点向力的作用线引垂线段标垂直符号并标注 L。",
+            "最小动力原则：连接支点到力的作用点作为最长力臂 L，过该点作垂线即为最小力的方向。",
+            "滑轮组绕绳：承担物重的绳子段数 n 决定省力程度，s = nh，v绳 = n·v物。"
+        ],
+        "exam_tips": "【中考易错点】作图题切忌漏画垂直符号；水平方向滑轮组克服摩擦力做有用功 (W有 = f·s物)。"
+    }
+}
+
+# ==========================================
+# 4. 九年级化学（酸碱盐与实验探究）核心考点库
+# ==========================================
+SUZHOU_CHEMISTRY_DICT = {
+    "酸碱盐": {
+        "title": "常见的酸碱盐及复分解反应",
+        "book": "初三化学下册·酸碱盐核心单元",
+        "formula": "复分解反应发生条件：生成沉淀、气体或水三者至少满足其一",
+        "key_points": [
+            "常见酸：浓盐酸具有挥发性(白雾)；浓硫酸具有吸水性(干燥剂)与脱水腐蚀性，稀释必须【酸入水、沿器壁、缓缓倒、不断搅】。",
+            "常见碱：NaOH俗称烧碱/火碱/苛性钠，易潮解；Ca(OH)2俗称熟石灰/消石灰，澄清石灰水用于检验CO2。",
+            "中考高频沉淀颜色：Cu(OH)2 蓝色沉淀；Fe(OH)3 红褐色沉淀；BaSO4、AgCl 不溶于稀硝酸的白色沉淀；CaCO3、BaCO3 溶于酸产生气泡的白色沉淀。"
+        ],
+        "exam_tips": "【苏州中考推断题题眼】根据特殊沉淀颜色、气体生成或特殊转化（如三角转化：CaCO3 ➔ CaO ➔ Ca(OH)2 ➔ CaCO3）突破推断。"
+    },
+    "气体制备": {
+        "title": "实验室气体制备与净化",
+        "book": "初三化学气体制取综合专题",
+        "formula": "制氧气: 2KMnO4 =加热= K2MnO4 + MnO2 + O2↑；制CO2: CaCO3 + 2HCl = CaCl2 + H2O + CO2↑",
+        "key_points": [
+            "发生装置选择：固固加热型 (高锰酸钾制O2)；固液常温型 (大理石与稀盐酸制CO2、双氧水制O2)。",
+            "收集装置选择：不易溶于水用排水法 (O2, H2)；密度比空气大用向上排空气法 (O2, CO2)；密度比空气小用向下排空气法 (H2)。",
+            "CO2 实验室制法禁忌：不能用稀硫酸 (生成微溶的CaSO4覆盖反应物阻碍反应)；不能用浓盐酸 (易挥发使气体不纯)；不能用碳酸钠 (反应过快难收集)。"
+        ],
+        "exam_tips": "【苏州中考实验答题规范】多功能瓶进气口原则：排水法‘短进长出’；向上排空气法‘长进短出’。"
+    },
+    "金属活动性": {
+        "title": "金属活动性顺序与置换反应",
+        "book": "初三化学第八单元·金属与金属材料",
+        "formula": "K Ca Na Mg Al Zn Fe Sn Pb (H) Cu Hg Ag Pt Au (前置后，盐可溶)",
+        "key_points": [
+            "判断依据：位于氢前的金属能置换出稀盐酸/稀硫酸中的氢；位于前面的金属能把位于后面的金属从其盐溶液中置换出来 (K,Ca,Na除外)。",
+            "滤渣滤液推断秘籍：金属活动性差距越大的优先反应（先远后近原则）。向含 AgNO3 和 Cu(NO3)2 的混合溶液中加入铁粉，铁先与 AgNO3 反应，Ag 完全置换后再与 Cu(NO3)2 反应。"
+        ],
+        "exam_tips": "【中考核心考查】滤渣一定有 Ag，可能有 Cu、Fe；若溶液为蓝色，则滤渣中绝对不可能含有 Fe。"
+    }
+}
+
+# ==========================================
+# 5. 智能检索辅助函数
 # ==========================================
 def query_english_word(keyword: str) -> dict:
     """查询初三译林版单词"""
@@ -188,12 +263,10 @@ def query_english_word(keyword: str) -> dict:
     if clean_word in YILIN_ENGLISH_DICT:
         return {"matched": True, "data": YILIN_ENGLISH_DICT[clean_word]}
     
-    # 模糊匹配
     for k, v in YILIN_ENGLISH_DICT.items():
         if clean_word in k:
             return {"matched": True, "data": v}
 
-    # 兜底：符合苏州初三英语考纲的智能解析模板
     return {
         "matched": False,
         "word": clean_word,
@@ -205,12 +278,10 @@ def query_ancient_text(keyword: str) -> dict:
     """查询统编版初三文言文与古诗词"""
     clean_key = keyword.strip()
     
-    # 篇目全称或简称匹配
     for title, item in TONGBIAN_ANCIENT_DICT.items():
         if title in clean_key or clean_key in title:
             return {"matched": True, "data": item}
         
-    # 名句匹配
     for title, item in TONGBIAN_ANCIENT_DICT.items():
         for sentence in item["famous_sentences"]:
             if clean_key in sentence:
@@ -226,3 +297,20 @@ def query_ancient_text(keyword: str) -> dict:
         "note": "苏州市初三统编版文言考点",
         "text": f"篇目【{clean_key}】收录于苏州市初中学业水平考试要求文言诗文考查范围。请确认篇目名称（如：岳阳楼记、醉翁亭记、出师表、水调歌头）。"
     }
+
+def query_physics_concept(keyword: str) -> dict:
+    """查询苏科版初三物理考点"""
+    clean_key = keyword.strip()
+    for title, item in SUKE_PHYSICS_DICT.items():
+        if title in clean_key or clean_key in title:
+            return {"matched": True, "data": item}
+    return {"matched": False, "title": clean_key}
+
+def query_chemistry_concept(keyword: str) -> dict:
+    """查询初三化学核心考点"""
+    clean_key = keyword.strip()
+    for title, item in SUZHOU_CHEMISTRY_DICT.items():
+        if title in clean_key or clean_key in title:
+            return {"matched": True, "data": item}
+    return {"matched": False, "title": clean_key}
+
