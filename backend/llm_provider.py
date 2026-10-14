@@ -21,9 +21,9 @@ SUPPORTED_PROVIDERS = {
     "gemini": {
         "name": "Google Gemini",
         "base_url": "https://generativelanguage.googleapis.com/v1beta/openai/",
-        "humanities_model": "gemini-flash-latest",
-        "stem_model": "gemini-pro-latest",
-        "description": "谷歌旗舰模型：文科用 Flash 秒级出句法主旨；理科用 Pro 深度推导二次函数与几何证明。"
+        "humanities_model": "gemini-3.5-flash",
+        "stem_model": "gemini-3.5-flash",
+        "description": "谷歌最新 Gemini 3.5 旗舰矩阵，兼具秒级响应与超强多模态数理化识图推理。"
     },
     "deepseek": {
         "name": "DeepSeek (深度求索)",
@@ -122,12 +122,11 @@ async def generate_suzhou_answer(question: str, subject: str = "初三综合") -
         "Content-Type": "application/json"
     }
 
-    # 优先使用目标模型（理科 Pro，文科 Flash）
-    candidate_models = [config["model"]]
-    # 若目标模型为 Pro，备选候选列表加入 Flash 进行 429/503 降级保底
-    flash_fallback = os.getenv("AI_MODEL_HUMANITIES", "gemini-1.5-flash")
-    if config["model"] != flash_fallback:
-        candidate_models.append(flash_fallback)
+    # 优先使用目标模型，并接入高可用 gemini-3.5-flash / gemini-3.6-flash / gemini-3.5-flash-lite 级联容灾保底
+    candidate_models = []
+    for m in [config["model"], "gemini-3.5-flash", "gemini-3.6-flash", "gemini-3.5-flash-lite"]:
+        if m and m not in candidate_models:
+            candidate_models.append(m)
 
     endpoint = f"{config['base_url']}/chat/completions"
 
@@ -161,7 +160,8 @@ async def generate_suzhou_answer(question: str, subject: str = "初三综合") -
 async def generate_suzhou_vision_answer(image_bytes: bytes, user_prompt: str = "", mime_type: str = "image/jpeg") -> str:
     """
     多模态数理化截图智能解析：
-    接收学生上传的试卷/习题截图，自动调用多模态大模型（理科旗舰 Pro 模型优先）提取题目与几何/函数图形并输出解题规范。
+    接收学生上传的试卷/习题截图，自动调用多模态大模型提取题目与几何/函数图形并输出初三中考解题规范。
+    具备多层级高可用无缝切换，杜绝 429 限流与 503 繁忙。
     """
     if not image_bytes:
         return "未能成功读取到截图文件，请重新截图发送。"
@@ -174,12 +174,13 @@ async def generate_suzhou_vision_answer(image_bytes: bytes, user_prompt: str = "
     preset = SUPPORTED_PROVIDERS.get(provider_key, SUPPORTED_PROVIDERS["gemini"])
     base_url = os.getenv("AI_BASE_URL", "").strip() or preset["base_url"]
     
-    # 截图解题默认优先调用理科推理模型（如 gemini-pro-latest），并设置 flash 备选降级
-    pro_model = os.getenv("AI_MODEL_STEM", "").strip() or preset.get("stem_model", "gemini-pro-latest")
-    flash_model = os.getenv("AI_MODEL_HUMANITIES", "").strip() or preset.get("humanities_model", "gemini-flash-latest")
-    candidate_models = [pro_model]
-    if pro_model != flash_model:
-        candidate_models.append(flash_model)
+    # 截图解题默认优先调用理科模型，并设置 gemini-3.5-flash 系列作为坚实兜底
+    pro_model = os.getenv("AI_MODEL_STEM", "").strip() or preset.get("stem_model", "gemini-3.5-flash")
+    flash_model = os.getenv("AI_MODEL_HUMANITIES", "").strip() or preset.get("humanities_model", "gemini-3.5-flash")
+    candidate_models = []
+    for m in [pro_model, flash_model, "gemini-3.5-flash", "gemini-3.6-flash", "gemini-3.5-flash-lite"]:
+        if m and m not in candidate_models:
+            candidate_models.append(m)
 
     b64_image = base64.b64encode(image_bytes).decode("utf-8")
     data_url = f"data:{mime_type};base64,{b64_image}"
