@@ -8,13 +8,55 @@ import re
 
 from guardrail import SUZHOU_GRADE9_SYSTEM_PROMPT, check_for_out_of_bounds
 from knowledge_db import query_english_word, query_ancient_text
-from card_builder import build_menu_card, build_word_card, build_ancient_card, build_mode_input_card
+from card_builder import build_menu_card, build_word_card, build_ancient_card, build_mode_input_card, build_qa_result_card
 from feishu_client import reply_interactive_card, send_chat_card
+import httpx
+from dotenv import load_dotenv
+
+load_dotenv()
+
+async def call_llm_answer(question: str, subject: str = "初三综合") -> str:
+    """
+    调用大语言模型（默认完美适配 Google Gemini / DeepSeek / 通义千问等 OpenAI 兼容接口）
+    并注入苏州初三专属防超纲系统提示词进行规范解答。
+    """
+    api_key = os.getenv("AI_API_KEY", "")
+    base_url = os.getenv("AI_BASE_URL", "https://generativelanguage.googleapis.com/v1beta/openai/").rstrip("/")
+    model = os.getenv("AI_MODEL", "gemini-1.5-flash")
+
+    if not api_key:
+        return ""
+
+    endpoint = f"{base_url}/chat/completions"
+    headers = {
+        "Authorization": f"Bearer {api_key}",
+        "Content-Type": "application/json"
+    }
+    payload = {
+        "model": model,
+        "messages": [
+            {"role": "system", "content": SUZHOU_GRADE9_SYSTEM_PROMPT},
+            {"role": "user", "content": f"【学科】：{subject}\n【学生提问】：{question}\n\n请按照苏州市初中九年级中考评分规范，给出考点定位、详细推导步骤及踩分点提醒："}
+        ],
+        "temperature": 0.3
+    }
+
+    async with httpx.AsyncClient(timeout=30) as client:
+        try:
+            resp = await client.post(endpoint, headers=headers, json=payload)
+            data = resp.json()
+            if "choices" in data and len(data["choices"]) > 0:
+                return data["choices"][0]["message"]["content"]
+            else:
+                print(f"[LLM API Error] {data}")
+        except Exception as e:
+            print(f"[LLM Call Exception] {e}")
+    return ""
 
 app = FastAPI(
     title="苏九学伴 - 学习助手中台",
     description="针对苏州市9年级学生的学习助手中台后端 API 与飞书消息机器人引擎",
-    version="1.1.0"
+    version="1.2.0"
 )
 
 # 挂载前端页面静态资源
@@ -42,29 +84,33 @@ async def ask_assistant(req: QuestionRequest):
     """
     input_check = check_for_out_of_bounds(req.question)
     
-    simulated_answer = (
-        f"【苏州中考考点定位】{req.subject} 核心考查\n\n"
-        f"针对问题：'{req.question}'\n\n"
-        "【苏科版标准解题步骤】\n"
-        "1. 规范设未知数并列出等量关系；\n"
-        "2. 按照九年级课本规范进行配方/因式分解；\n"
-        "3. 验根并写出答语。\n\n"
-        "【踩分点提醒】步骤中切勿遗漏定义域讨论与单位书写。"
-    )
+    # 优先调用大模型，若未配置 key 则使用苏科版结构化模拟
+    llm_resp = await call_llm_answer(req.question, req.subject)
+    if llm_resp:
+        final_answer = llm_resp
+    else:
+        final_answer = (
+            f"【苏州中考考点定位】{req.subject} 核心考查\n\n"
+            f"针对问题：'{req.question}'\n\n"
+            "【苏科版标准解题步骤】\n"
+            "1. 规范设未知数并列出等量关系；\n"
+            "2. 按照九年级课本规范进行配方/因式分解；\n"
+            "3. 验根并写出答语。\n\n"
+            "【踩分点提醒】步骤中切勿遗漏定义域讨论与单位书写。"
+        )
 
-    output_check = check_for_out_of_bounds(simulated_answer)
+    output_check = check_for_out_of_bounds(final_answer)
 
     return {
         "status": "success",
         "scope": "苏州市9年级考纲范围",
         "guardrail_status": "Passed" if output_check["is_safe"] else "Blocked",
-        "answer": simulated_answer,
+        "answer": final_answer,
         "input_warning": None if input_check["is_safe"] else f"检测到包含超纲词汇：{input_check['violations']}"
     }
 
 def clean_message_text(raw_text: str) -> str:
     """去除飞书消息中的 @ 机器人标签及前后空白"""
-    # 飞书文本格式常带 @_user_1 或 @_all
     cleaned = re.sub(r"@_user_\d+", "", raw_text)
     cleaned = re.sub(r"@苏九学伴", "", cleaned)
     cleaned = re.sub(r"@助手", "", cleaned)
@@ -88,7 +134,6 @@ async def feishu_event_handler(request: Request):
         return {"challenge": body.get("challenge", "")}
 
     # 2. 飞书交互式卡片点击回传 (card.action.trigger)
-    # 当用户点击助学卡片上的按钮时触发，支持卡片就地无刷新局部更新！
     if "action" in body and ("open_message_id" in body or "open_id" in body):
         action_val = body.get("action", {}).get("value", {})
         action_type = action_val.get("action")
@@ -129,7 +174,6 @@ async def feishu_event_handler(request: Request):
 
             user_query = clean_message_text(raw_text)
 
-            # 判断意图并决定回复哪张卡片
             card_to_send = None
 
             # 意图 A：@助手、呼出菜单、help、或者清空只 @了机器人
@@ -154,7 +198,7 @@ async def feishu_event_handler(request: Request):
                     ancient_result = query_ancient_text(search_title)
                     card_to_send = build_ancient_card(ancient_result)
 
-            # 意图 D：其他学科问题（经由防超纲安全审查后回复）
+            # 意图 D：学科自由问答（经由防超纲安全审查 + Gemini/大模型名师解析）
             else:
                 guard_check = check_for_out_of_bounds(user_query)
                 if not guard_check["is_safe"]:
@@ -173,8 +217,16 @@ async def feishu_event_handler(request: Request):
                         ]
                     }
                 else:
-                    # 默认给出助学菜单，并附带针对该问题的考点定位
-                    card_to_send = build_menu_card()
+                    # 尝试调用大模型解答
+                    llm_answer = await call_llm_answer(user_query)
+                    if llm_answer:
+                        out_check = check_for_out_of_bounds(llm_answer)
+                        if out_check["is_safe"]:
+                            card_to_send = build_qa_result_card(user_query, llm_answer)
+                        else:
+                            card_to_send = build_menu_card()
+                    else:
+                        card_to_send = build_menu_card()
 
             if card_to_send and message_id:
                 await reply_interactive_card(message_id, card_to_send)

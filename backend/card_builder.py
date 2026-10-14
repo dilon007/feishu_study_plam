@@ -341,3 +341,51 @@ def build_mode_input_card(mode: str) -> dict:
             }
         ]
     }
+
+def build_qa_result_card(question: str, answer: str, subject: str = "初三答疑") -> dict:
+    """
+    构建符合苏州初三中考规范的 AI 答疑解析卡片
+    """
+    return {
+        "config": {"wide_screen_mode": True},
+        "header": {
+            "template": "blue",
+            "title": {"tag": "plain_text", "content": f"🎓 苏九名师答疑 · {subject}"}
+        },
+        "elements": [
+            {
+                "tag": "div",
+                "text": {
+                    "tag": "lark_md",
+                    "content": f"**【提问题目】**：\n{question}"
+                }
+            },
+            {"tag": "hr"},
+            {
+                "tag": "div",
+                "text": {
+                    "tag": "lark_md",
+                    "content": f"**【苏科版/苏州考纲规范解析】**：\n\n{answer}"
+                }
+            },
+            {"tag": "hr"},
+            {
+                "tag": "action",
+                "actions": [
+                    {
+                        "tag": "button",
+                        "text": {"tag": "plain_text", "content": "🔙 返回主菜单"},
+                        "type": "default",
+                        "value": {"action": "back_to_menu"}
+                    },
+                    {
+                        "tag": "button",
+                        "text": {"tag": "plain_text", "content": "📖 错题本整理"},
+                        "type": "primary",
+                        "url": WEB_DASHBOARD_URL
+                    }
+                ]
+            }
+        ]
+    }
+
