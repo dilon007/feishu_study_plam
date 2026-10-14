@@ -3,6 +3,7 @@
 """
 import os
 import time
+import json
 import httpx
 from dotenv import load_dotenv
 
@@ -58,7 +59,7 @@ async def reply_interactive_card(message_id: str, card_content: dict) -> bool:
     }
     payload = {
         "msg_type": "interactive",
-        "content": str(card_content) if isinstance(card_content, str) else httpx._models.json_dumps(card_content)
+        "content": str(card_content) if isinstance(card_content, str) else json.dumps(card_content)
     }
 
     async with httpx.AsyncClient(timeout=10) as client:
@@ -87,7 +88,7 @@ async def send_chat_card(chat_id: str, card_content: dict) -> bool:
     payload = {
         "receive_id": chat_id,
         "msg_type": "interactive",
-        "content": httpx._models.json_dumps(card_content)
+        "content": json.dumps(card_content)
     }
 
     async with httpx.AsyncClient(timeout=10) as client:
