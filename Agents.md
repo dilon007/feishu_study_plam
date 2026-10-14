@@ -113,6 +113,8 @@ feishu_study_plam/
 | 日期 | 类型 (Bug / Feature / Rule) | 说明与变更要点 | 涉及文件 |
 | :--- | :--- | :--- | :--- |
 | 2026-10-13 | Init | 初始化项目架构；确立苏州市9年级专属范围与防超纲机制；设计首版欢迎页与飞书卡片 | `Agents.md`, `backend/`, `frontend/`, `feishu_cards/` |
+| 2026-10-13 | Config | 关联 GitHub 远程仓库并完成首次推送同步；记录仓库与部署 Token 配置 | `Agents.md`, `.git/` |
+| 2026-10-14 | Feature | 支持飞书会话内 @助手 呼出助学菜单；集成译林版初三英语生词速查与统编版九年级古文古诗速查，支持卡片就地无刷新交互与防超纲拦截 | `backend/main.py`, `backend/card_builder.py`, `backend/knowledge_db.py`, `backend/feishu_client.py` |
 
 ---
 
@@ -121,3 +123,23 @@ feishu_study_plam/
 - [ ] 补充苏科版数学/物理章节知识点知识库 (RAG 向量切片构建)
 - [ ] 飞书 JSSDK 免登流程对接
 - [ ] 扩充 `guardrail.py` 中的高中超纲禁忌词库与正向初中考标词库
+
+---
+
+## 七、 代码仓库与 GitHub 协作配置
+
+### 1. 远程仓库信息
+* **GitHub 仓库地址**：`https://github.com/dilon007/feishu_study_plam.git`
+* **默认跟踪分支**：`main`
+* **远程仓库别名**：`origin`
+
+### 2. GitHub 鉴权凭证 (PAT Token)
+* **Token**：`github_pat_11AAS2QBQ0T3M4sQb6Idsx_***************************************************`（已持久化在本地 `.git/config` 凭证库中，避免明文泄露被 GitHub 吊销）
+* **Token 类型**：GitHub Fine-grained Personal Access Token
+* **关键权限要求**：`Repository permissions -> Contents` 必须为 **Read and write**（否则 git push 将报 403 错误）。
+* **自动化推送免密配置说明**：
+  本地已配置带鉴权的 remote origin，Agent 或终端免密自动推送：
+  ```bash
+  git remote set-url origin https://oauth2:<YOUR_GITHUB_PAT>@github.com/dilon007/feishu_study_plam.git
+  ```
+  > ⚠️ **注意**：公开仓库（Public）由 GitHub Secret Scanning 保护，推送时切勿包含未脱敏的明文 Token 字符串。
