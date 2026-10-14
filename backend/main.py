@@ -10,53 +10,16 @@ from guardrail import SUZHOU_GRADE9_SYSTEM_PROMPT, check_for_out_of_bounds
 from knowledge_db import query_english_word, query_ancient_text
 from card_builder import build_menu_card, build_word_card, build_ancient_card, build_mode_input_card, build_qa_result_card
 from feishu_client import reply_interactive_card, send_chat_card
+from llm_provider import generate_suzhou_answer, get_current_model_config, SUPPORTED_PROVIDERS
 import httpx
 from dotenv import load_dotenv
 
 load_dotenv()
 
-async def call_llm_answer(question: str, subject: str = "初三综合") -> str:
-    """
-    调用大语言模型（默认完美适配 Google Gemini / DeepSeek / 通义千问等 OpenAI 兼容接口）
-    并注入苏州初三专属防超纲系统提示词进行规范解答。
-    """
-    api_key = os.getenv("AI_API_KEY", "")
-    base_url = os.getenv("AI_BASE_URL", "https://generativelanguage.googleapis.com/v1beta/openai/").rstrip("/")
-    model = os.getenv("AI_MODEL", "gemini-1.5-flash")
-
-    if not api_key:
-        return ""
-
-    endpoint = f"{base_url}/chat/completions"
-    headers = {
-        "Authorization": f"Bearer {api_key}",
-        "Content-Type": "application/json"
-    }
-    payload = {
-        "model": model,
-        "messages": [
-            {"role": "system", "content": SUZHOU_GRADE9_SYSTEM_PROMPT},
-            {"role": "user", "content": f"【学科】：{subject}\n【学生提问】：{question}\n\n请按照苏州市初中九年级中考评分规范，给出考点定位、详细推导步骤及踩分点提醒："}
-        ],
-        "temperature": 0.3
-    }
-
-    async with httpx.AsyncClient(timeout=30) as client:
-        try:
-            resp = await client.post(endpoint, headers=headers, json=payload)
-            data = resp.json()
-            if "choices" in data and len(data["choices"]) > 0:
-                return data["choices"][0]["message"]["content"]
-            else:
-                print(f"[LLM API Error] {data}")
-        except Exception as e:
-            print(f"[LLM Call Exception] {e}")
-    return ""
-
 app = FastAPI(
     title="苏九学伴 - 学习助手中台",
     description="针对苏州市9年级学生的学习助手中台后端 API 与飞书消息机器人引擎",
-    version="1.2.0"
+    version="1.3.0"
 )
 
 # 挂载前端页面静态资源
@@ -85,7 +48,7 @@ async def ask_assistant(req: QuestionRequest):
     input_check = check_for_out_of_bounds(req.question)
     
     # 优先调用大模型，若未配置 key 则使用苏科版结构化模拟
-    llm_resp = await call_llm_answer(req.question, req.subject)
+    llm_resp = await generate_suzhou_answer(req.question, req.subject)
     if llm_resp:
         final_answer = llm_resp
     else:
@@ -217,8 +180,8 @@ async def feishu_event_handler(request: Request):
                         ]
                     }
                 else:
-                    # 尝试调用大模型解答
-                    llm_answer = await call_llm_answer(user_query)
+                    # 尝试调用多模型适配引擎解答
+                    llm_answer = await generate_suzhou_answer(user_query)
                     if llm_answer:
                         out_check = check_for_out_of_bounds(llm_answer)
                         if out_check["is_safe"]:
@@ -232,6 +195,21 @@ async def feishu_event_handler(request: Request):
                 await reply_interactive_card(message_id, card_to_send)
 
     return {"code": 0, "msg": "success"}
+
+@app.get("/api/system/model_status")
+async def get_model_status():
+    """查看当前激活的大模型配置与系统预设的全部支持厂商"""
+    return {
+        "active_config": get_current_model_config(),
+        "supported_providers": {
+            k: {
+                "name": v["name"],
+                "default_model": v["default_model"],
+                "description": v["description"]
+            }
+            for k, v in SUPPORTED_PROVIDERS.items()
+        }
+    }
 
 # 开发者测试预览接口
 @app.get("/api/test/menu_card")
