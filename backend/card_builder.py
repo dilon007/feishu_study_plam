@@ -205,7 +205,11 @@ def build_subject_workbench_card(subject_key: str) -> dict:
             "tag": "div",
             "text": {
                 "tag": "lark_md",
-                "content": "💬 **如何提问：**\n1. 📸 **直接发送题目截图**：自动识别几何图、坐标系或电路图，分步推导；\n2. ✍️ **直接打字输入**：发送题目文字或具体疑惑知识点；\n3. 随时点击下方按钮可更换其他学科。"
+                "content": (
+                    "💬 **英语背单词与提问指引：**\n1. 📸 **发送课文划线截图**：精准识别课文高亮/划线词组，生成背诵单、在线默写与 A4 打印卷；\n2. ✍️ **直接输入单词或短语**：如输入 'generous' 或 '查单词 attention' 获取考标考点；\n3. 随时点击下方按钮可更换其他学科。"
+                    if subject_key == "english" else
+                    "💬 **如何提问：**\n1. 📸 **直接发送题目截图**：自动识别几何图、坐标系或电路图，分步推导；\n2. ✍️ **直接打字输入**：发送题目文字或具体疑惑知识点；\n3. 随时点击下方按钮可更换其他学科。"
+                )
             }
         },
         {
@@ -515,3 +519,177 @@ def build_qa_result_card(question: str, answer: str, subject_label: str = "初�
             }
         ]
     }
+
+def build_vocab_list_card(session_id: str, items: list[dict], title: str = "课文划线高频词组提取成功") -> dict:
+    """
+    构建课文高亮划线词汇提取清单卡片：
+    包含：词汇表格预览、在线校对修改入口、卡片逐词默写自测入口、A4 纸打印排版入口
+    """
+    vocab_lines = []
+    for idx, item in enumerate(items[:10], 1):
+        phrase = item.get("phrase", "")
+        phonetic = f"`{item.get('phonetic', '')}`" if item.get('phonetic') else ""
+        meaning = item.get("meaning", "")
+        vocab_lines.append(f"**{idx}. {phrase}** {phonetic} —— *{meaning}*")
+
+    if len(items) > 10:
+        vocab_lines.append(f"*... 及其他共 {len(items)} 个划线词条，可在工作台中完整查看*")
+
+    list_md = "\n".join(vocab_lines)
+    workbench_url = f"https://dilonclaw.cloud/suzhou/vocab?id={session_id}"
+
+    return {
+        "config": {"wide_screen_mode": True},
+        "header": {
+            "template": "blue",
+            "title": {"tag": "plain_text", "content": f"📝 课文划线词汇清单 (共 {len(items)} 条)"}
+        },
+        "elements": [
+            {
+                "tag": "div",
+                "text": {
+                    "tag": "lark_md",
+                    "content": f"**【考标对标】**：译林牛津版九年级英语教材\n**【AI视觉提取】**：已锁定课文截图高亮/划线重点短语：\n\n{list_md}"
+                }
+            },
+            {"tag": "hr"},
+            {
+                "tag": "action",
+                "actions": [
+                    {
+                        "tag": "button",
+                        "text": {"tag": "plain_text", "content": "✏️ 校对与修改中文注释"},
+                        "type": "primary",
+                        "multi_url": {
+                            "url": workbench_url,
+                            "pc_url": workbench_url,
+                            "android_url": workbench_url,
+                            "ios_url": workbench_url
+                        }
+                    },
+                    {
+                        "tag": "button",
+                        "text": {"tag": "plain_text", "content": "✍️ 开始卡片默写"},
+                        "type": "default",
+                        "value": {"action": "dictate_step", "session_id": session_id, "index": 0, "reveal": False}
+                    },
+                    {
+                        "tag": "button",
+                        "text": {"tag": "plain_text", "content": "🖨️ A4 打印与自测卷"},
+                        "type": "default",
+                        "multi_url": {
+                            "url": f"{workbench_url}&tab=print",
+                            "pc_url": f"{workbench_url}&tab=print",
+                            "android_url": f"{workbench_url}&tab=print",
+                            "ios_url": f"{workbench_url}&tab=print"
+                        }
+                    }
+                ]
+            },
+            {
+                "tag": "action",
+                "actions": [
+                    {"tag": "button", "text": {"tag": "plain_text", "content": "🔙 返回英语工作台"}, "type": "default", "value": {"action": "select_subject", "subject": "english"}},
+                    {"tag": "button", "text": {"tag": "plain_text", "content": "🔄 更换其他科目"}, "type": "default", "value": {"action": "back_to_menu"}}
+                ]
+            }
+        ]
+    }
+
+def build_vocab_dictation_card(session_id: str, items: list[dict], current_index: int = 0, show_answer: bool = False) -> dict:
+    """
+    构建飞书原生逐词翻页默写自测卡片：
+    每次出现一个单词的中文注释，点击揭晓答案，点击下一条到下一个单词
+    """
+    total = len(items)
+    if total == 0:
+        return build_vocab_list_card(session_id, items)
+
+    idx = max(0, min(current_index, total - 1))
+    cur = items[idx]
+    workbench_url = f"https://dilonclaw.cloud/suzhou/vocab?id={session_id}"
+
+    # 答案区内容展示
+    if show_answer:
+        answer_md = f"**【英文答案】**：`{cur.get('phrase', '')}`  \n**【国际音标】**：{cur.get('phonetic', '-')}\n**【中考提醒】**：{cur.get('note', '苏州市初三考标核心词组')}"
+        reveal_button = {
+            "tag": "button",
+            "text": {"tag": "plain_text", "content": "🙈 隐藏答案"},
+            "type": "default",
+            "value": {"action": "dictate_step", "session_id": session_id, "index": idx, "reveal": False}
+        }
+    else:
+        answer_md = "💡 *请在心中思考或在草稿纸上书写，随后点击下方按钮揭晓答案*"
+        reveal_button = {
+            "tag": "button",
+            "text": {"tag": "plain_text", "content": "👀 查看英文答案"},
+            "type": "primary",
+            "value": {"action": "dictate_step", "session_id": session_id, "index": idx, "reveal": True}
+        }
+
+    # 下一个词按钮逻辑
+    next_idx = (idx + 1) if (idx + 1 < total) else 0
+    next_btn_text = "➡️ 下一个词" if (idx + 1 < total) else "🎉 已全部完成 (再练一遍)"
+    next_button = {
+        "tag": "button",
+        "text": {"tag": "plain_text", "content": next_btn_text},
+        "type": "default" if not show_answer else "primary",
+        "value": {"action": "dictate_step", "session_id": session_id, "index": next_idx, "reveal": False}
+    }
+
+    return {
+        "config": {"wide_screen_mode": True},
+        "header": {
+            "template": "blue",
+            "title": {"tag": "plain_text", "content": f"✍️ 词汇自测默写 · (第 {idx + 1}/{total} 题)"}
+        },
+        "elements": [
+            {
+                "tag": "div",
+                "text": {
+                    "tag": "lark_md",
+                    "content": f"### 📌 中文释义提示：\n# **{cur.get('meaning', '（请根据课文记忆填空）')}**"
+                }
+            },
+            {"tag": "hr"},
+            {
+                "tag": "div",
+                "text": {
+                    "tag": "lark_md",
+                    "content": answer_md
+                }
+            },
+            {"tag": "hr"},
+            {
+                "tag": "action",
+                "actions": [
+                    reveal_button,
+                    next_button,
+                    {
+                        "tag": "button",
+                        "text": {"tag": "plain_text", "content": "📋 退出并看清单"},
+                        "type": "default",
+                        "value": {"action": "dictate_exit", "session_id": session_id}
+                    }
+                ]
+            },
+            {
+                "tag": "action",
+                "actions": [
+                    {
+                        "tag": "button",
+                        "text": {"tag": "plain_text", "content": "✏️ 网页修改释义"},
+                        "type": "default",
+                        "multi_url": {"url": workbench_url, "pc_url": workbench_url}
+                    },
+                    {
+                        "tag": "button",
+                        "text": {"tag": "plain_text", "content": "🖨️ A4 打印自测单"},
+                        "type": "default",
+                        "multi_url": {"url": f"{workbench_url}&tab=print", "pc_url": f"{workbench_url}&tab=print"}
+                    }
+                ]
+            }
+        ]
+    }
+

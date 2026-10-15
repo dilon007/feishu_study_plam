@@ -1,0 +1,960 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>苏九学伴 · 英语课文划线词汇背诵与默写工作台</title>
+  <link href="https://fonts.googleapis.com/css2?family=Noto+Serif+SC:wght@500;700&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <style>
+    :root {
+      --primary: #1e40af;
+      --primary-light: #3b82f6;
+      --primary-bg: #eff6ff;
+      --accent: #059669;
+      --accent-bg: #ecfdf5;
+      --danger: #dc2626;
+      --text-main: #1f2937;
+      --text-muted: #6b7280;
+      --border: #e5e7eb;
+      --card-bg: #ffffff;
+      --shadow-sm: 0 1px 2px 0 rgba(0, 0, 0, 0.05);
+      --shadow-md: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06);
+      --shadow-lg: 0 10px 15px -3px rgba(0, 0, 0, 0.1), 0 4px 6px -2px rgba(0, 0, 0, 0.05);
+    }
+
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      font-family: 'Inter', -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "PingFang SC", sans-serif;
+      background: #f8fafc;
+      color: var(--text-main);
+      line-height: 1.5;
+      -webkit-font-smoothing: antialiased;
+    }
+
+    /* 顶部导航 */
+    header.site-header {
+      background: #ffffff;
+      border-bottom: 1px solid var(--border);
+      position: sticky;
+      top: 0;
+      z-index: 50;
+      box-shadow: var(--shadow-sm);
+    }
+    .header-inner {
+      max-width: 1100px;
+      margin: 0 auto;
+      padding: 12px 20px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      flex-wrap: wrap;
+      gap: 12px;
+    }
+    .brand {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    }
+    .brand-badge {
+      background: var(--primary);
+      color: white;
+      font-size: 11px;
+      font-weight: 700;
+      padding: 3px 8px;
+      border-radius: 6px;
+      letter-spacing: 0.5px;
+    }
+    .brand h1 {
+      font-size: 18px;
+      font-weight: 700;
+      color: #0f172a;
+    }
+
+    /* Tab 选项卡 */
+    .nav-tabs {
+      display: flex;
+      background: #f1f5f9;
+      padding: 4px;
+      border-radius: 8px;
+      gap: 4px;
+    }
+    .tab-btn {
+      border: none;
+      background: transparent;
+      padding: 6px 14px;
+      font-size: 13px;
+      font-weight: 600;
+      color: var(--text-muted);
+      border-radius: 6px;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      transition: all 0.2s ease;
+    }
+    .tab-btn.active {
+      background: #ffffff;
+      color: var(--primary);
+      box-shadow: var(--shadow-sm);
+    }
+
+    /* 主体容器 */
+    main.container {
+      max-width: 1100px;
+      margin: 24px auto;
+      padding: 0 16px;
+    }
+
+    /* 模块面板 */
+    .tab-panel {
+      display: none;
+      animation: fadeIn 0.25s ease-out forwards;
+    }
+    .tab-panel.active { display: block; }
+
+    @keyframes fadeIn {
+      from { opacity: 0; transform: translateY(4px); }
+      to { opacity: 1; transform: translateY(0); }
+    }
+
+    /* 顶部信息条 */
+    .status-banner {
+      background: #ffffff;
+      border: 1px solid #bfdbfe;
+      border-radius: 12px;
+      padding: 16px 20px;
+      margin-bottom: 20px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      flex-wrap: wrap;
+      gap: 14px;
+      box-shadow: var(--shadow-sm);
+    }
+    .status-info h2 {
+      font-size: 16px;
+      font-weight: 700;
+      color: #1e3a8a;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+    .status-info p {
+      font-size: 13px;
+      color: var(--text-muted);
+      margin-top: 4px;
+    }
+
+    .btn-group {
+      display: flex;
+      gap: 8px;
+    }
+    .btn {
+      border: none;
+      padding: 8px 16px;
+      font-size: 13px;
+      font-weight: 600;
+      border-radius: 8px;
+      cursor: pointer;
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      transition: all 0.15s ease;
+      text-decoration: none;
+    }
+    .btn-primary {
+      background: var(--primary);
+      color: white;
+    }
+    .btn-primary:hover { background: #1d4ed8; }
+    .btn-accent {
+      background: var(--accent);
+      color: white;
+    }
+    .btn-accent:hover { background: #047857; }
+    .btn-outline {
+      background: white;
+      border: 1px solid var(--border);
+      color: var(--text-main);
+    }
+    .btn-outline:hover { background: #f8fafc; border-color: #cbd5e1; }
+
+    /* ========================================= */
+    /* 模块 1：词组在线编辑与确认表格 (英 -> 中) */
+    /* ========================================= */
+    .table-card {
+      background: #ffffff;
+      border-radius: 12px;
+      border: 1px solid var(--border);
+      overflow: hidden;
+      box-shadow: var(--shadow-sm);
+    }
+    .vocab-table {
+      width: 100%;
+      border-collapse: collapse;
+      text-align: left;
+    }
+    .vocab-table th {
+      background: #f8fafc;
+      padding: 12px 16px;
+      font-size: 13px;
+      font-weight: 600;
+      color: #475569;
+      border-bottom: 1px solid var(--border);
+    }
+    .vocab-table td {
+      padding: 12px 16px;
+      border-bottom: 1px solid #f1f5f9;
+      font-size: 14px;
+      vertical-align: middle;
+    }
+    .vocab-table tr:hover { background: #f8fafc; }
+    
+    .phrase-text {
+      font-weight: 700;
+      color: #0f172a;
+      font-size: 15px;
+    }
+    .phonetic-tag {
+      color: #64748b;
+      font-family: 'Times New Roman', serif;
+      font-size: 13px;
+      margin-left: 6px;
+    }
+    .meaning-input {
+      width: 100%;
+      padding: 8px 12px;
+      border: 1px solid #cbd5e1;
+      border-radius: 6px;
+      font-size: 14px;
+      color: #0f172a;
+      background: #ffffff;
+      transition: border-color 0.15s, box-shadow 0.15s;
+    }
+    .meaning-input:focus {
+      outline: none;
+      border-color: var(--primary-light);
+      box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.15);
+      background: #f8fafc;
+    }
+    .note-text {
+      font-size: 12px;
+      color: #94a3b8;
+    }
+
+    .table-actions {
+      padding: 16px 20px;
+      background: #f8fafc;
+      border-top: 1px solid var(--border);
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      flex-wrap: wrap;
+      gap: 12px;
+    }
+
+    /* ========================================= */
+    /* 模块 2：逐词翻页默写自测卡片 (Dictation) */
+    /* ========================================= */
+    .dictation-wrapper {
+      max-width: 680px;
+      margin: 20px auto;
+    }
+    .dictation-card {
+      background: #ffffff;
+      border-radius: 16px;
+      border: 1px solid var(--border);
+      padding: 36px 32px;
+      box-shadow: var(--shadow-lg);
+      text-align: center;
+      position: relative;
+    }
+    .dictation-progress {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 24px;
+    }
+    .badge-index {
+      background: var(--primary-bg);
+      color: var(--primary);
+      font-weight: 700;
+      font-size: 13px;
+      padding: 4px 12px;
+      border-radius: 20px;
+    }
+    .progress-bar-wrap {
+      flex: 1;
+      height: 6px;
+      background: #e2e8f0;
+      border-radius: 4px;
+      margin: 0 16px;
+      overflow: hidden;
+    }
+    .progress-bar-fill {
+      height: 100%;
+      background: var(--primary);
+      width: 0%;
+      transition: width 0.3s ease;
+    }
+
+    .prompt-label {
+      font-size: 13px;
+      font-weight: 600;
+      color: var(--text-muted);
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+      margin-bottom: 8px;
+    }
+    .chinese-prompt {
+      font-size: 26px;
+      font-weight: 700;
+      color: #111827;
+      margin-bottom: 20px;
+      min-height: 40px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: 0 10px;
+    }
+
+    .user-spelling-area {
+      margin: 24px 0;
+    }
+    .spelling-input {
+      width: 80%;
+      max-width: 420px;
+      padding: 12px 16px;
+      font-size: 18px;
+      font-weight: 600;
+      border: 2px dashed #94a3b8;
+      border-radius: 10px;
+      text-align: center;
+      outline: none;
+      transition: all 0.2s;
+    }
+    .spelling-input:focus {
+      border-color: var(--primary);
+      border-style: solid;
+      background: #eff6ff;
+    }
+
+    .answer-box {
+      background: #f8fafc;
+      border: 1px solid #e2e8f0;
+      border-radius: 12px;
+      padding: 18px;
+      margin-top: 20px;
+      display: none;
+      animation: fadeIn 0.2s ease;
+    }
+    .answer-box.revealed { display: block; }
+    .answer-phrase {
+      font-size: 24px;
+      font-weight: 700;
+      color: var(--primary);
+    }
+    .answer-phonetic {
+      color: #64748b;
+      font-size: 15px;
+      margin-left: 8px;
+      font-family: 'Times New Roman', serif;
+    }
+    .answer-note {
+      font-size: 13px;
+      color: #475569;
+      margin-top: 6px;
+    }
+
+    .dictation-controls {
+      display: flex;
+      justify-content: center;
+      gap: 12px;
+      margin-top: 28px;
+      flex-wrap: wrap;
+    }
+    .control-btn {
+      padding: 10px 24px;
+      font-size: 15px;
+      font-weight: 600;
+      border-radius: 10px;
+      border: none;
+      cursor: pointer;
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      transition: all 0.15s ease;
+    }
+
+    /* ========================================= */
+    /* 模块 3：A4 纸打印排版 (Print Workspace) */
+    /* ========================================= */
+    .print-toolbar {
+      background: #ffffff;
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      padding: 14px 20px;
+      margin-bottom: 24px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      flex-wrap: wrap;
+      gap: 12px;
+      box-shadow: var(--shadow-sm);
+    }
+    .print-mode-selector {
+      display: flex;
+      gap: 8px;
+    }
+
+    /* A4 模拟纸张视图 (屏幕预览) */
+    .a4-paper {
+      background: #ffffff;
+      width: 210mm;
+      min-height: 297mm;
+      margin: 0 auto 30px auto;
+      padding: 18mm 18mm 20mm 18mm;
+      box-shadow: var(--shadow-md);
+      border: 1px solid #d1d5db;
+      box-sizing: border-box;
+      font-family: 'Times New Roman', 'Noto Serif SC', serif;
+    }
+
+    .a4-header {
+      text-align: center;
+      border-bottom: 2px solid #000;
+      padding-bottom: 12px;
+      margin-bottom: 16px;
+    }
+    .a4-header h2 {
+      font-size: 20px;
+      font-weight: 700;
+      letter-spacing: 1px;
+      color: #000;
+    }
+    .a4-header .subtitle {
+      font-size: 13px;
+      color: #333;
+      margin-top: 4px;
+    }
+    .a4-meta-row {
+      display: flex;
+      justify-content: space-between;
+      margin-top: 10px;
+      font-size: 13px;
+      color: #000;
+    }
+    .a4-meta-item {
+      display: inline-block;
+      min-width: 120px;
+      border-bottom: 1px solid #000;
+      padding-bottom: 2px;
+    }
+
+    /* 打印表格 */
+    .print-table {
+      width: 100%;
+      border-collapse: collapse;
+      margin-top: 14px;
+    }
+    .print-table th, .print-table td {
+      border: 1px solid #333;
+      padding: 8px 10px;
+      font-size: 13px;
+      line-height: 1.4;
+      vertical-align: middle;
+    }
+    .print-table th {
+      background: #f3f4f6;
+      font-weight: 700;
+      text-align: center;
+    }
+    .td-num { text-align: center; width: 40px; }
+    .td-meaning { width: 45%; }
+    .td-handwriting {
+      height: 38px;
+      border-bottom: 1px dashed #666;
+    }
+
+    /* 提示 Toast */
+    .toast-msg {
+      position: fixed;
+      bottom: 24px;
+      right: 24px;
+      background: #111827;
+      color: white;
+      padding: 10px 18px;
+      border-radius: 8px;
+      font-size: 13px;
+      font-weight: 500;
+      box-shadow: var(--shadow-lg);
+      display: none;
+      z-index: 100;
+      animation: fadeIn 0.2s ease;
+    }
+
+    /* ========================================= */
+    /* 专精 A4 纸打印样式 (@media print) */
+    /* ========================================= */
+    @media print {
+      body {
+        background: #ffffff !important;
+        color: #000000 !important;
+      }
+      header.site-header,
+      .print-toolbar,
+      .toast-msg,
+      .nav-tabs,
+      .status-banner {
+        display: none !important;
+      }
+      main.container {
+        max-width: 100% !important;
+        margin: 0 !important;
+        padding: 0 !important;
+      }
+      .tab-panel {
+        display: none !important;
+      }
+      #panel-print {
+        display: block !important;
+      }
+      .a4-paper {
+        width: 100% !important;
+        min-height: auto !important;
+        margin: 0 !important;
+        padding: 0 !important;
+        box-shadow: none !important;
+        border: none !important;
+      }
+      .print-table th, .print-table td {
+        border-color: #000000 !important;
+      }
+      @page {
+        size: A4 portrait;
+        margin: 15mm 15mm 15mm 15mm;
+      }
+    }
+  </style>
+</head>
+<body>
+
+  <!-- 顶部导航 -->
+  <header class="site-header">
+    <div class="header-inner">
+      <div class="brand">
+        <span class="brand-badge">苏州中考</span>
+        <h1>苏九学伴 · 英语划线词组学习台</h1>
+      </div>
+      <div class="nav-tabs">
+        <button class="tab-btn active" onclick="switchTab('edit')">📋 词汇确认与修改</button>
+        <button class="tab-btn" onclick="switchTab('dictate')">✍️ 逐词翻页默写</button>
+        <button class="tab-btn" onclick="switchTab('print')">🖨️ A4 打印单</button>
+      </div>
+    </div>
+  </header>
+
+  <main class="container">
+
+    <!-- 顶部状态栏 -->
+    <div class="status-banner">
+      <div class="status-info">
+        <h2 id="session-title">📖 课文高亮划线重点词组 (识别提取完成)</h2>
+        <p id="session-desc">对标教材：译林牛津版九年级英语 · 苏州中考高频核心考点</p>
+      </div>
+      <div class="btn-group">
+        <button class="btn btn-outline" onclick="addNewRow()">➕ 补充短语</button>
+        <button class="btn btn-primary" onclick="saveVocabChanges()">💾 保存中文注释修改</button>
+      </div>
+    </div>
+
+    <!-- 面板 1：英 -> 中 确认与在线修改表格 -->
+    <div id="panel-edit" class="tab-panel active">
+      <div class="table-card">
+        <table class="vocab-table">
+          <thead>
+            <tr>
+              <th style="width: 60px; text-align: center;">序号</th>
+              <th style="width: 250px;">英文词组 / 单词</th>
+              <th>中文注释（点击即可直接修改）</th>
+              <th style="width: 180px;">中考考点备注</th>
+              <th style="width: 70px; text-align: center;">操作</th>
+            </tr>
+          </thead>
+          <tbody id="vocab-table-body">
+            <!-- 动态渲染词汇列表 -->
+          </tbody>
+        </table>
+        <div class="table-actions">
+          <span style="font-size: 13px; color: var(--text-muted);" id="vocab-count-indicator">共 0 个高亮划线词组</span>
+          <div class="btn-group">
+            <button class="btn btn-accent" onclick="switchTab('dictate')">▶️ 开始逐词默写</button>
+            <button class="btn btn-outline" onclick="switchTab('print')">🖨️ 打印为 A4 纸</button>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- 面板 2：逐词翻页默写自测卡片 -->
+    <div id="panel-dictate" class="tab-panel">
+      <div class="dictation-wrapper">
+        <div class="dictation-card">
+          <div class="dictation-progress">
+            <span class="badge-index" id="dictate-index-badge">第 1 / 5 题</span>
+            <div class="progress-bar-wrap">
+              <div class="progress-bar-fill" id="dictate-progress-fill"></div>
+            </div>
+            <button class="btn btn-outline" style="padding: 4px 10px; font-size: 12px;" onclick="resetDictation()">🔄 重头开始</button>
+          </div>
+
+          <div class="prompt-label">【中文释义提示】</div>
+          <div class="chinese-prompt" id="dictate-chinese-prompt">认真对待；严肃处理</div>
+
+          <div class="user-spelling-area">
+            <input type="text" id="dictate-input" class="spelling-input" placeholder="在纸上默写或在此输入自测..." onkeydown="handleInputKey(event)">
+            <div style="font-size: 12px; color: #94a3b8; margin-top: 6px;">按 Enter 回车键或点击“查看答案”揭晓</div>
+          </div>
+
+          <!-- 揭晓答案框 -->
+          <div class="answer-box" id="dictate-answer-box">
+            <div>
+              <span class="answer-phrase" id="dictate-answer-phrase">take...seriously</span>
+              <span class="answer-phonetic" id="dictate-answer-phonetic">/teɪk ˈsɪəriəsli/</span>
+            </div>
+            <div class="answer-note" id="dictate-answer-note">考点：后接代词时用宾格或放入中间</div>
+          </div>
+
+          <div class="dictation-controls">
+            <button class="control-btn btn-outline" id="btn-reveal" onclick="toggleRevealAnswer()">👀 查看英文答案</button>
+            <button class="control-btn btn-primary" id="btn-next" onclick="nextDictationWord()">➡️ 下一个词</button>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- 面板 3：A4 纸打印排版视图 -->
+    <div id="panel-print" class="tab-panel">
+      <div class="print-toolbar">
+        <div class="print-mode-selector">
+          <span style="font-size: 13px; font-weight: 600; color: #374151; margin-right: 6px; align-self: center;">打印模式：</span>
+          <button class="btn btn-outline" id="mode-dictate-btn" onclick="setPrintMode('dictate')">📝 课堂默写卷模式 (自测填空)</button>
+          <button class="btn btn-outline" id="mode-list-btn" onclick="setPrintMode('list')">📖 背诵清单模式 (中英对照)</button>
+        </div>
+        <div class="btn-group">
+          <button class="btn btn-primary" onclick="window.print()">🖨️ 立即打印 / 存为 PDF</button>
+        </div>
+      </div>
+
+      <!-- 模拟 A4 纸张内容区域 -->
+      <div class="a4-paper" id="a4-printable-paper">
+        <div class="a4-header">
+          <h2 id="a4-title">苏州市九年级英语课文重点划线词组自测默写单</h2>
+          <div class="subtitle" id="a4-subtitle">配套教材：译林牛津版（9A/9B） · 苏州中考高频词汇与搭配</div>
+          <div class="a4-meta-row">
+            <div>班级：<span class="a4-meta-item"></span></div>
+            <div>姓名：<span class="a4-meta-item"></span></div>
+            <div>得分：<span class="a4-meta-item"></span> / 100</div>
+            <div>建议用时：15 分钟</div>
+          </div>
+        </div>
+
+        <table class="print-table" id="print-table-content">
+          <!-- 动态渲染打印表格 -->
+        </table>
+
+        <div style="margin-top: 20px; font-size: 11px; color: #555; text-align: right;">
+          苏九学伴 · 智能化学习助手中台打印输出 · 严守苏州中考考纲
+        </div>
+      </div>
+    </div>
+
+  </main>
+
+  <div class="toast-msg" id="toast-bar">提示信息</div>
+
+  <script>
+    // 默认演示数据（若未从后端传参则初始化此示例）
+    let currentSession = {
+      session_id: "demo",
+      title: "课文高亮划线重点词组",
+      items: [
+        { id: 1, phrase: "take...seriously", phonetic: "/teɪk ˈsɪəriəsli/", meaning: "认真对待；严肃处理", note: "Unit 1 核心短语" },
+        { id: 2, phrase: "pay attention to", phonetic: "/peɪ əˈtenʃn tu/", meaning: "注意；留心", note: "后接名词或 doing" },
+        { id: 3, phrase: "generous", phonetic: "/ˈdʒenərəs/", meaning: "慷慨的；大方的", note: "中考高频性格形容词" },
+        { id: 4, phrase: "make up one's mind", phonetic: "/meɪk ʌp wʌnz maɪnd/", meaning: "下定决心", note: "等同于 decide" },
+        { id: 5, phrase: "give up", phonetic: "/ɡɪv ʌp/", meaning: "放弃", note: "后接动名词 v-ing" }
+      ]
+    };
+
+    let dictateCurrentIndex = 0;
+    let isRevealed = false;
+    let currentPrintMode = "dictate"; // 'dictate' (默写留空) 或 'list' (对照)
+
+    // 页面初始化：读取 URL 参数 ?id=xxx
+    window.addEventListener("DOMContentLoaded", async () => {
+      const urlParams = new URLSearchParams(window.location.search);
+      const sessionId = urlParams.get("id");
+      if (sessionId) {
+        try {
+          const resp = await fetch(`/api/vocab/session/${sessionId}`);
+          if (resp.ok) {
+            const data = await resp.json();
+            if (data && data.items && data.items.length > 0) {
+              currentSession = data;
+            }
+          }
+        } catch (e) {
+          console.warn("加载在线会话失败，使用预设模板", e);
+        }
+      }
+      renderAll();
+    });
+
+    function showToast(msg) {
+      const t = document.getElementById("toast-bar");
+      t.innerText = msg;
+      t.style.display = "block";
+      setTimeout(() => { t.style.display = "none"; }, 2500);
+    }
+
+    function switchTab(tabKey) {
+      document.querySelectorAll(".tab-btn").forEach((btn, idx) => {
+        btn.classList.toggle("active", (tabKey === 'edit' && idx === 0) || (tabKey === 'dictate' && idx === 1) || (tabKey === 'print' && idx === 2));
+      });
+      document.getElementById("panel-edit").classList.toggle("active", tabKey === 'edit');
+      document.getElementById("panel-dictate").classList.toggle("active", tabKey === 'dictate');
+      document.getElementById("panel-print").classList.toggle("active", tabKey === 'print');
+
+      if (tabKey === 'dictate') {
+        renderDictationCard();
+      } else if (tabKey === 'print') {
+        renderPrintTable();
+      }
+    }
+
+    function renderAll() {
+      document.getElementById("session-title").innerText = `📖 ${currentSession.title} (共 ${currentSession.items.length} 个词组)`;
+      document.getElementById("vocab-count-indicator").innerText = `共 ${currentSession.items.length} 个高亮划线词组`;
+      renderEditTable();
+      renderDictationCard();
+      renderPrintTable();
+    }
+
+    // 渲染面板 1：编辑表格 (英 -> 中)
+    function renderEditTable() {
+      const tbody = document.getElementById("vocab-table-body");
+      tbody.innerHTML = "";
+
+      currentSession.items.forEach((item, index) => {
+        const tr = document.createElement("tr");
+        tr.innerHTML = `
+          <td style="text-align: center; color: var(--text-muted); font-weight: 600;">${index + 1}</td>
+          <td>
+            <div class="phrase-text">${item.phrase}</div>
+            <span class="phonetic-tag">${item.phonetic || ''}</span>
+          </td>
+          <td>
+            <input type="text" class="meaning-input" value="${item.meaning}" 
+                   onchange="updateItemMeaning(${index}, this.value)"
+                   placeholder="输入对应中考中文注释..." />
+          </td>
+          <td>
+            <input type="text" class="meaning-input" style="font-size: 12px; color: #64748b;" 
+                   value="${item.note || ''}" 
+                   onchange="updateItemNote(${index}, this.value)"
+                   placeholder="考点提示..." />
+          </td>
+          <td style="text-align: center;">
+            <button class="btn btn-outline" style="padding: 4px 8px; color: var(--danger); font-size: 12px;" 
+                    onclick="deleteItem(${index})">删除</button>
+          </td>
+        `;
+        tbody.appendChild(tr);
+      });
+    }
+
+    function updateItemMeaning(index, val) {
+      if (currentSession.items[index]) {
+        currentSession.items[index].meaning = val;
+      }
+    }
+
+    function updateItemNote(index, val) {
+      if (currentSession.items[index]) {
+        currentSession.items[index].note = val;
+      }
+    }
+
+    function deleteItem(index) {
+      currentSession.items.splice(index, 1);
+      renderAll();
+      showToast("已移除该词条");
+    }
+
+    function addNewRow() {
+      currentSession.items.push({
+        id: currentSession.items.length + 1,
+        phrase: "new phrase",
+        phonetic: "/.../",
+        meaning: "新词组中文释义",
+        note: "补充考点"
+      });
+      renderAll();
+      showToast("已增加新词条，请在列表中直接修改");
+    }
+
+    // 保存修改到后端
+    async function saveVocabChanges() {
+      showToast("正在保存修改...");
+      try {
+        const resp = await fetch(`/api/vocab/session/${currentSession.session_id}/update`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            items: currentSession.items,
+            title: currentSession.title
+          })
+        });
+        if (resp.ok) {
+          showToast("✅ 中文注释与词条修改已成功保存！");
+          renderPrintTable();
+        } else {
+          showToast("已在本地生效");
+        }
+      } catch (e) {
+        showToast("已在本地内存更新保存");
+      }
+    }
+
+    // =========================================
+    // 面板 2：默写交互 (Dictation Logic)
+    // =========================================
+    function renderDictationCard() {
+      if (!currentSession.items || currentSession.items.length === 0) return;
+      if (dictateCurrentIndex >= currentSession.items.length) {
+        dictateCurrentIndex = 0;
+      }
+
+      const cur = currentSession.items[dictateCurrentIndex];
+      const total = currentSession.items.length;
+
+      document.getElementById("dictate-index-badge").innerText = `第 ${dictateCurrentIndex + 1} / ${total} 题`;
+      const pct = Math.round(((dictateCurrentIndex + 1) / total) * 100);
+      document.getElementById("dictate-progress-fill").style.width = `${pct}%`;
+
+      document.getElementById("dictate-chinese-prompt").innerText = cur.meaning || "（暂无中文释义）";
+      document.getElementById("dictate-answer-phrase").innerText = cur.phrase;
+      document.getElementById("dictate-answer-phonetic").innerText = cur.phonetic || "";
+      document.getElementById("dictate-answer-note").innerText = cur.note ? `考点提醒：${cur.note}` : "";
+
+      const input = document.getElementById("dictate-input");
+      input.value = "";
+      input.focus();
+
+      isRevealed = false;
+      document.getElementById("dictate-answer-box").classList.remove("revealed");
+      document.getElementById("btn-reveal").innerText = "👀 查看英文答案";
+    }
+
+    function toggleRevealAnswer() {
+      const box = document.getElementById("dictate-answer-box");
+      isRevealed = !isRevealed;
+      box.classList.toggle("revealed", isRevealed);
+      document.getElementById("btn-reveal").innerText = isRevealed ? "🙈 隐藏答案" : "👀 查看英文答案";
+    }
+
+    function nextDictationWord() {
+      if (dictateCurrentIndex < currentSession.items.length - 1) {
+        dictateCurrentIndex++;
+        renderDictationCard();
+      } else {
+        showToast("🎉 恭喜！本组课文高亮划线词汇已全部默写完毕！");
+        dictateCurrentIndex = 0;
+        renderDictationCard();
+      }
+    }
+
+    function resetDictation() {
+      dictateCurrentIndex = 0;
+      renderDictationCard();
+      showToast("已重置默写进度");
+    }
+
+    function handleInputKey(e) {
+      if (e.key === "Enter") {
+        if (!isRevealed) {
+          toggleRevealAnswer();
+        } else {
+          nextDictationWord();
+        }
+      }
+    }
+
+    // =========================================
+    // 面板 3：A4 纸打印排版 (Print Logic)
+    // =========================================
+    function setPrintMode(mode) {
+      currentPrintMode = mode;
+      document.getElementById("mode-dictate-btn").classList.toggle("btn-primary", mode === 'dictate');
+      document.getElementById("mode-dictate-btn").classList.toggle("btn-outline", mode !== 'dictate');
+      document.getElementById("mode-list-btn").classList.toggle("btn-primary", mode === 'list');
+      document.getElementById("mode-list-btn").classList.toggle("btn-outline", mode !== 'list');
+      renderPrintTable();
+    }
+
+    function renderPrintTable() {
+      const table = document.getElementById("print-table-content");
+      if (currentPrintMode === 'dictate') {
+        // 课堂默写卷模式：左侧中文，右侧留空
+        table.innerHTML = `
+          <thead>
+            <tr>
+              <th style="width: 45px;">题号</th>
+              <th style="width: 42%;">中文释义（请根据提示写出英文词组）</th>
+              <th>英文词组 / 单词默写规范书写区</th>
+              <th style="width: 60px;">评分</th>
+            </tr>
+          </thead>
+          <tbody>
+            ${currentSession.items.map((item, idx) => `
+              <tr>
+                <td class="td-num">${idx + 1}</td>
+                <td class="td-meaning">
+                  <strong>${item.meaning}</strong>
+                  ${item.note ? `<div style="font-size: 11px; color: #555;">[提示]: ${item.note}</div>` : ''}
+                </td>
+                <td class="td-handwriting"></td>
+                <td style="text-align: center;"></td>
+              </tr>
+            `).join('')}
+          </tbody>
+        `;
+        document.getElementById("a4-title").innerText = "苏州市九年级英语课文重点划线词组自测默写单";
+      } else {
+        // 背诵对照清单模式：中英双列
+        table.innerHTML = `
+          <thead>
+            <tr>
+              <th style="width: 45px;">序号</th>
+              <th style="width: 38%;">英文短语 / 词组</th>
+              <th style="width: 20%;">国际音标</th>
+              <th>中文考点释义</th>
+            </tr>
+          </thead>
+          <tbody>
+            ${currentSession.items.map((item, idx) => `
+              <tr>
+                <td class="td-num">${idx + 1}</td>
+                <td><strong>${item.phrase}</strong></td>
+                <td style="font-family: 'Times New Roman'; text-align: center;">${item.phonetic || '-'}</td>
+                <td>${item.meaning} ${item.note ? `<span style="font-size: 11px; color: #666;">(${item.note})</span>` : ''}</td>
+              </tr>
+            `).join('')}
+          </tbody>
+        `;
+        document.getElementById("a4-title").innerText = "苏州市九年级英语课文重点划线词组考前背诵清单";
+      }
+    }
+  </script>
+</body>
+</html>

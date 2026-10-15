@@ -145,6 +145,8 @@ feishu_study_plam/
 | 2026-10-14 | Feature | 全面支持初三数理化题目直接发送截图（拍照搜题）：自动拉取飞书图片资源，利用 Gemini 多模态视觉大模型精准识别几何辅助线与坐标图，按中考规范分步推导与防超纲拦截 | `backend/main.py`, `backend/llm_provider.py`, `backend/feishu_client.py` |
 | 2026-10-14 | Feature | 实现【先选科目再答疑】高效工作流与学科答疑台无刷新交互；新增苏科版九年级物理与初三化学核心考点库、高频专题卡片与双引擎路由 | `backend/main.py`, `backend/card_builder.py`, `backend/knowledge_db.py`, `Agents.md` |
 | 2026-10-14 | Bugfix | 修复上传数理化习题截图返回“系统繁忙”故障；定位为 Gemini Pro 模型 429 配额限制与旧版别名 503 拥堵；全面升级为 Google 官方推荐的 `gemini-3.5-flash` 旗舰矩阵，并构建 4 级级联容灾防雪崩机制，秒级输出中考答题标准 | `backend/llm_provider.py`, `backend/main.py`, `Agents.md` |
+| 2026-10-14 | Feature | 追加初三英语课文划线词组背诵与默写模块：支持课文截图高亮划线识别提取、英->中确认与在线修改释义、卡片/网页逐词翻页默写自测、A4纸规范打印排版（背诵清单与课堂自测卷双模） | `backend/vocab_service.py`, `frontend/vocab_workbench.html`, `backend/card_builder.py`, `backend/llm_provider.py`, `backend/main.py`, `Agents.md` |
+| 2026-10-15 | Bugfix | 修复题目（尤其是物理搜题）会不断反复发送答案的问题；定位为飞书 Webhook 3秒超时重发机制与缺少幂等去重所致：引入 `BackgroundTasks` 异步分发大模型解题并即时响应 HTTP 200，新增 `event_id`/`message_id` 双重内存幂等去重器，彻底根除重复推送 | `backend/main.py`, `Agents.md` |
 
 ---
 
@@ -154,6 +156,7 @@ feishu_study_plam/
 - [x] 苏州初三学科考标库构建（苏科版物理、初三化学、译林英语、统编文言）
 - [x] 题目截图拍照搜题多模态图文解析
 - [x] 先选科目再答疑专属工作台
+- [x] 英语课文划线生词短语提取、英->中确认修改、逐词翻页默写与 A4 纸打印导出
 - [ ] 接入国内平替大模型接口（DeepSeek R1 / 通义千问等备选）
 - [ ] 补充苏科版数学/物理章节知识点知识库 (RAG 向量切片构建)
 - [ ] 扩充 `guardrail.py` 中的高中超纲禁忌词库与正向初中考标词库

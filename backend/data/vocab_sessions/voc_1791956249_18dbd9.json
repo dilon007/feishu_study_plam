@@ -1,0 +1,30 @@
+{
+  "session_id": "voc_1791956249_18dbd9",
+  "user_id": "test_user",
+  "title": "课文重点划线词组",
+  "created_at": "2026-10-14 13:37:29",
+  "total_count": 3,
+  "items": [
+    {
+      "id": 1,
+      "phrase": "take...seriously",
+      "phonetic": "/teɪk ˈsɪəriəsli/",
+      "meaning": "认真对待；严肃处理",
+      "note": "Unit 1 核心短语"
+    },
+    {
+      "id": 2,
+      "phrase": "pay attention to",
+      "phonetic": "/peɪ əˈtenʃn tu/",
+      "meaning": "注意；留心",
+      "note": "后接 doing"
+    },
+    {
+      "id": 3,
+      "phrase": "generous",
+      "phonetic": "/ˈdʒenərəs/",
+      "meaning": "慷慨的；大方的",
+      "note": "核心形容词"
+    }
+  ]
+}
