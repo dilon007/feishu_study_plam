@@ -12,13 +12,21 @@ import time
 from typing import List, Dict, Optional
 
 DATA_DIR = os.path.join(os.path.dirname(__file__), "data", "vocab_sessions")
-os.makedirs(DATA_DIR, exist_ok=True)
+try:
+    os.makedirs(DATA_DIR, exist_ok=True)
+except Exception:
+    DATA_DIR = "/tmp/vocab_sessions"
+    try:
+        os.makedirs(DATA_DIR, exist_ok=True)
+    except Exception:
+        pass
 
 # 内存快速缓存
 _sessions_cache: Dict[str, dict] = {}
 
 def _get_session_path(session_id: str) -> str:
     return os.path.join(DATA_DIR, f"{session_id}.json")
+
 
 def create_vocab_session(user_id: str, items: List[dict], title: str = "课文划线重点词组") -> dict:
     """

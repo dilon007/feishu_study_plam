@@ -91,6 +91,7 @@ async def get_welcome_page():
         return FileResponse(index_file)
     return {"message": "Welcome page not found"}
 
+@app.get("/vocab")
 @app.get("/suzhou/vocab")
 async def get_vocab_workbench_page():
     """返回英语划线词汇确认、默写与 A4 纸打印页面"""
@@ -100,6 +101,7 @@ async def get_vocab_workbench_page():
     return {"message": "Vocab workbench page not found"}
 
 @app.get("/api/vocab/session/{session_id}")
+@app.get("/suzhou/api/vocab/session/{session_id}")
 async def get_vocab_session_api(session_id: str):
     """读取背诵会话数据"""
     data = get_vocab_session(session_id)
@@ -112,12 +114,14 @@ class VocabUpdateRequest(BaseModel):
     title: str = ""
 
 @app.post("/api/vocab/session/{session_id}/update")
+@app.post("/suzhou/api/vocab/session/{session_id}/update")
 async def update_vocab_session_api(session_id: str, req: VocabUpdateRequest):
     """保存学生对中文注释的在线修改"""
     updated = update_vocab_session(session_id, req.items, req.title)
     if not updated:
         raise HTTPException(status_code=404, detail="Session not found")
     return {"code": 0, "msg": "success", "data": updated}
+
 
 
 class QuestionRequest(BaseModel):

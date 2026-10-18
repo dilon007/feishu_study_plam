@@ -7,12 +7,14 @@
 """
 import os
 import re
+import json
 import base64
 import httpx
 from dotenv import load_dotenv
 from guardrail import SUZHOU_GRADE9_SYSTEM_PROMPT
 
 load_dotenv()
+
 
 # ==========================================
 # 常见初三中考适配大模型预设矩阵
@@ -261,14 +263,19 @@ async def extract_highlighted_vocab_from_image(image_bytes: bytes, mime_type: st
     data_url = f"data:{mime_type};base64,{b64_image}"
 
     instruction = (
-        "【苏州市九年级英语课文划线词汇精准提取】\n"
-        "请仔细观察这张英语课文截图，特别识别页面中【被荧光笔高亮（黄色/粉色/绿色等）、手写下划线、圆圈标记或手写批注】的英文单词、词组短语及固定搭配。\n"
+        "【苏州市九年级英语课文划线词汇精准提取（像素级视觉分析）】\n"
+        "你是一位精通苏州市初中英语（译林牛津版9A/9B）的中考教研名师。请仔细观察这张课文截图，找出学生在课本上做出的【人工标记生词与短语】。\n"
+        "【重点识别以下 4 种标记迹象】：\n"
+        "1. 【荧光笔高亮涂色】：浅黄色、黄绿色、粉红色、天蓝色、淡紫色等半透明覆盖在单词上方的涂抹高亮；\n"
+        "2. 【手写划线】：印刷体单词正下方的横线、下划线、双横线、波浪线（包含铅笔灰线、黑色中性笔划线、红色圆珠笔划线）；\n"
+        "3. 【圈选标记】：用手写圆圈、方框框选出来的重点单词或短语；\n"
+        "4. 【批注旁引】：旁边带有箭头指向、引出线或旁边写有中文翻译手写批注对应的英文词。\n"
         "【任务要求】：\n"
-        "1. 仅提取有划线或高亮标记的词组/生词，忽略无标注普通课文背景；如果全图均为手抄生词清单，则完整提取；\n"
-        "2. 结合苏州市九年级（译林牛津版）英语考标，给出标准的国际音标与适合初三中考考点的准确中文释义；\n"
-        "3. 严格输出标准 JSON 数组格式，不要输出任何额外的问候或自然语言解释，格式如下：\n"
+        "- 仅提取有明显划线/高亮/圈选标记的词组或单词，严禁将未标记的整篇课文普通正文混入；\n"
+        "- 若标记的是固定短语的一部分（如划了 take...seriously 或 pay attention to），请提取完整规范的短语搭配；\n"
+        "- 输出标准的 JSON 数组，严禁包含任何前言、结语或自然语言废话，格式如下：\n"
         "[\n"
-        "  {\"phrase\": \"英文词组或单词\", \"phonetic\": \"/音标/\", \"meaning\": \"中文注释释义\", \"note\": \"考点提醒或搭配\"}\n"
+        "  {\"phrase\": \"英文词组或单词\", \"phonetic\": \"/音标/\", \"meaning\": \"适合苏州中考考点的中文释义\", \"note\": \"搭配或考点提醒\"}\n"
         "]"
     )
 
@@ -283,7 +290,10 @@ async def extract_highlighted_vocab_from_image(image_bytes: bytes, mime_type: st
             payload = {
                 "model": model_name,
                 "messages": [
-                    {"role": "system", "content": "You are a professional junior high school English teacher in Suzhou, specializing in Yilin Oxford English Grade 9. Output valid JSON array only."},
+                    {
+                        "role": "system", 
+                        "content": "You are a professional junior high school English teacher and OCR specialist. Focus strictly on detecting hand-drawn underlines, highlighter ink, or circled text. Output ONLY valid JSON array."
+                    },
                     {
                         "role": "user",
                         "content": [
@@ -300,29 +310,29 @@ async def extract_highlighted_vocab_from_image(image_bytes: bytes, mime_type: st
                     data = resp.json()
                     if "choices" in data and len(data["choices"]) > 0:
                         raw_content = data["choices"][0]["message"]["content"].strip()
-                        # 清理可能存在的 markdown ```json 包裹
+                        print(f"[Vocab Vision Model {model_name} Output]: {raw_content[:300]}")
+                        
+                        # 清理 markdown 包裹
                         clean_json_str = re.sub(r"^```json\s*", "", raw_content, flags=re.IGNORECASE)
                         clean_json_str = re.sub(r"^```\s*", "", clean_json_str)
                         clean_json_str = re.sub(r"\s*```$", "", clean_json_str).strip()
-                        
-                        # 尝试正则提取 [...]
-                        match = re.search(r"\[\s*\{.*?\}\s*\]", clean_json_str, re.DOTALL)
-                        if match:
-                            clean_json_str = match.group(0)
+
+                        # 使用正则精确截取最外层 JSON 数组 [...]
+                        start_idx = clean_json_str.find("[")
+                        end_idx = clean_json_str.rfind("]")
+                        if start_idx != -1 and end_idx != -1 and end_idx > start_idx:
+                            clean_json_str = clean_json_str[start_idx:end_idx + 1]
 
                         parsed = json.loads(clean_json_str)
                         if isinstance(parsed, list) and len(parsed) > 0:
                             return parsed
                 else:
-                    print(f"[Vocab Vision Model {model_name} HTTP {resp.status_code}] Trying fallback: {resp.text[:120]}")
+                    print(f"[Vocab Vision Model {model_name} HTTP {resp.status_code}] Error: {resp.text[:150]}")
             except Exception as e:
                 print(f"[Vocab Vision Model {model_name} Exception] {e}")
 
-    # 若所有模型未成功提取或未配 key，返回基础解析示例
-    return [
-        {"phrase": "take...seriously", "phonetic": "/teɪk ˈsɪəriəsli/", "meaning": "认真对待；严肃处理", "note": "重点短语"},
-        {"phrase": "pay attention to", "phonetic": "/peɪ əˈtenʃn tu/", "meaning": "注意；留心", "note": "后接 doing"},
-        {"phrase": "generous", "phonetic": "/ˈdʒenərəs/", "meaning": "慷慨的；大方的", "note": "核心形容词"}
-    ]
+    # 若所有模型扫描后均未检测到划线标记，返回空列表供上层做真实提示
+    return []
+
 
 
