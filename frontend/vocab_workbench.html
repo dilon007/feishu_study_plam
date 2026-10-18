@@ -698,25 +698,39 @@
     let isRevealed = false;
     let currentPrintMode = "dictate"; // 'dictate' (默写留空) 或 'list' (对照)
 
-    // 页面初始化：读取 URL 参数 ?id=xxx
+    function getApiPrefix() {
+      return window.location.pathname.startsWith('/suzhou') ? '/suzhou/api' : '/api';
+    }
+
+    // 页面初始化：读取 URL 参数 ?id=xxx 并动态拉取真实识别词汇列表
     window.addEventListener("DOMContentLoaded", async () => {
       const urlParams = new URLSearchParams(window.location.search);
       const sessionId = urlParams.get("id");
       if (sessionId) {
-        try {
-          const resp = await fetch(`/api/vocab/session/${sessionId}`);
-          if (resp.ok) {
-            const data = await resp.json();
-            if (data && data.items && data.items.length > 0) {
-              currentSession = data;
+        const prefix = getApiPrefix();
+        const candidateUrls = [
+          `${prefix}/vocab/session/${sessionId}`,
+          `/suzhou/api/vocab/session/${sessionId}`,
+          `/api/vocab/session/${sessionId}`
+        ];
+        for (const u of candidateUrls) {
+          try {
+            const resp = await fetch(u);
+            if (resp.ok) {
+              const data = await resp.json();
+              if (data && data.items && data.items.length > 0) {
+                currentSession = data;
+                break;
+              }
             }
+          } catch (e) {
+            console.warn("加载在线会话地址重试:", u, e);
           }
-        } catch (e) {
-          console.warn("加载在线会话失败，使用预设模板", e);
         }
       }
       renderAll();
     });
+
 
     function showToast(msg) {
       const t = document.getElementById("toast-bar");
@@ -814,25 +828,39 @@
     // 保存修改到后端
     async function saveVocabChanges() {
       showToast("正在保存修改...");
-      try {
-        const resp = await fetch(`/api/vocab/session/${currentSession.session_id}/update`, {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            items: currentSession.items,
-            title: currentSession.title
-          })
-        });
-        if (resp.ok) {
-          showToast("✅ 中文注释与词条修改已成功保存！");
-          renderPrintTable();
-        } else {
-          showToast("已在本地生效");
+      const prefix = getApiPrefix();
+      const candidateUrls = [
+        `${prefix}/vocab/session/${currentSession.session_id}/update`,
+        `/suzhou/api/vocab/session/${currentSession.session_id}/update`,
+        `/api/vocab/session/${currentSession.session_id}/update`
+      ];
+      let saved = false;
+      for (const u of candidateUrls) {
+        try {
+          const resp = await fetch(u, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              items: currentSession.items,
+              title: currentSession.title
+            })
+          });
+          if (resp.ok) {
+            saved = true;
+            break;
+          }
+        } catch (e) {
+          console.warn("保存重试:", u, e);
         }
-      } catch (e) {
-        showToast("已在本地内存更新保存");
+      }
+      if (saved) {
+        showToast("✅ 中文注释与词条修改已成功保存！");
+        renderPrintTable();
+      } else {
+        showToast("已在当前页面生效");
       }
     }
+
 
     // =========================================
     // 面板 2：默写交互 (Dictation Logic)
