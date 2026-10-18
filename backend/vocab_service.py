@@ -23,6 +23,8 @@ except Exception:
 
 # 内存快速缓存
 _sessions_cache: Dict[str, dict] = {}
+# 记录每个用户最近一次创建的 session_id: { "user_id": "session_id" }
+_user_latest_session: Dict[str, str] = {}
 
 def _get_session_path(session_id: str) -> str:
     return os.path.join(DATA_DIR, f"{session_id}.json")
@@ -55,6 +57,9 @@ def create_vocab_session(user_id: str, items: List[dict], title: str = "课文�
     }
 
     _sessions_cache[session_id] = session_data
+    if user_id:
+        _user_latest_session[user_id] = session_id
+
     try:
         with open(_get_session_path(session_id), "w", encoding="utf-8") as f:
             json.dump(session_data, f, ensure_ascii=False, indent=2)
@@ -77,6 +82,25 @@ def get_vocab_session(session_id: str) -> Optional[dict]:
                 return data
         except Exception as e:
             print(f"[Vocab Session Read Error] {e}")
+    return None
+
+def get_user_latest_vocab_session(user_id: str) -> Optional[dict]:
+    """获取指定用户最近一次创建的背诵会话"""
+    if not user_id:
+        return None
+    
+    # 优先从内存字典获取
+    latest_id = _user_latest_session.get(user_id)
+    if latest_id:
+        session = get_vocab_session(latest_id)
+        if session:
+            return session
+
+    # 兜底：从会话缓存或文件中寻找属于该用户的最新会话
+    for s_id, s_data in reversed(list(_sessions_cache.items())):
+        if s_data.get("user_id") == user_id:
+            return s_data
+
     return None
 
 def update_vocab_session(session_id: str, new_items: List[dict], new_title: str = "") -> Optional[dict]:

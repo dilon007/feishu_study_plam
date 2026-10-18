@@ -151,6 +151,8 @@ feishu_study_plam/
 | 2026-10-18 | Feature | 支持英语课文截图多图连续上传与跨页接缝智能拼接：新增 30 秒防抖聚合队列（连续发图自动重置倒计时并即时反馈接收进度），倒计时结束后多图并发送入 Gemini 3.5 Flash 视觉模型，智能拼接跨图截断短语/长句并自动消除重叠重复，全量输出中考词汇卡片 | `backend/vocab_aggregator.py`, `backend/llm_provider.py`, `backend/main.py`, `backend/card_builder.py`, `Agents.md` |
 | 2026-10-18 | Feature | 增加接收图片后【⚡ 立即识别生成】交互按钮：学生上传截图后可选择等待 30 秒自动聚合，也可随时主动点击按钮提前结束倒计时，卡片就地刷新为“正在识别中”，并在后台毫秒级启动多模态提取并回复最终词汇卡 | `backend/card_builder.py`, `backend/vocab_aggregator.py`, `backend/main.py`, `Agents.md` |
 | 2026-10-18 | Feature | 升级默写模式为【纯中文 Todo List 默写清单】：将逐词翻页默写重构为一键生成纯中文默写自测清单，每条附带 Todo List 标识（- [ ]），无英文泄露防作弊；采用就地刷新与异步新卡片双通道投递彻底杜绝无响应，并提供答案核对切换与英汉对照回退 | `backend/card_builder.py`, `backend/main.py`, `Agents.md` |
+| 2026-10-18 | Feature | 优化默写清单生成体验为【直接在对话框中回复】：新增 send_card_to_dialog 多策略投递保障，点击“生成默写清单”或在会话中输入“默写清单/列表”时，不再覆盖原词汇卡，而是直接在对话框中回复全新的纯中文 Todo List 默写自测卡，支持记忆用户最近拍照会话 | `backend/feishu_client.py`, `backend/vocab_service.py`, `backend/main.py`, `Agents.md` |
+
 
 
 

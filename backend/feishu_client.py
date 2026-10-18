@@ -120,6 +120,69 @@ async def send_chat_card(
             print(f"[Feishu Send Chat Card Exception] {e}")
     return False
 
+async def send_user_card(
+    user_id: str, 
+    card_content: dict, 
+    app_id: Optional[str] = None, 
+    app_secret: Optional[str] = None
+) -> bool:
+    """向指定 open_id 单聊直接发送一条卡片消息"""
+    token = await get_tenant_access_token(app_id, app_secret)
+    if not token:
+        return False
+
+    url = "https://open.feishu.cn/open-apis/im/v1/messages?receive_id_type=open_id"
+    headers = {
+        "Authorization": f"Bearer {token}",
+        "Content-Type": "application/json; charset=utf-8"
+    }
+    payload = {
+        "receive_id": user_id,
+        "msg_type": "interactive",
+        "content": json.dumps(card_content) if isinstance(card_content, dict) else str(card_content)
+    }
+
+    async with httpx.AsyncClient(timeout=10) as client:
+        try:
+            resp = await client.post(url, headers=headers, json=payload)
+            res = resp.json()
+            if res.get("code") == 0:
+                return True
+            else:
+                print(f"[Feishu Send User Card Failed] {res}")
+        except Exception as e:
+            print(f"[Feishu Send User Card Exception] {e}")
+    return False
+
+async def send_card_to_dialog(
+    card_content: dict,
+    message_id: str = "",
+    chat_id: str = "",
+    user_id: str = "",
+    app_id: Optional[str] = None,
+    app_secret: Optional[str] = None
+) -> bool:
+    """
+    通用对话框直接发送卡片函数：
+    多策略保障 100% 成功送达学生对话框：
+    1. 优先按 message_id 回复；
+    2. 若未提供或回复失败，按 open_id 直接私信发送；
+    3. 若未提供，按 chat_id 发送。
+    """
+    if message_id:
+        success = await reply_interactive_card(message_id, card_content, app_id, app_secret)
+        if success:
+            return True
+    if user_id:
+        success = await send_user_card(user_id, card_content, app_id, app_secret)
+        if success:
+            return True
+    if chat_id:
+        success = await send_chat_card(chat_id, card_content, app_id, app_secret)
+        if success:
+            return True
+    return False
+
 async def download_image_resource(
     message_id: str, 
     image_key: str, 

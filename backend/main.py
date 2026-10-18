@@ -21,13 +21,19 @@ from card_builder import (
     build_vocab_bot_welcome_card, build_image_batch_received_card,
     build_image_processing_card
 )
-from feishu_client import reply_interactive_card, send_chat_card, download_image_resource
+from feishu_client import (
+    reply_interactive_card, send_chat_card, send_user_card,
+    send_card_to_dialog, download_image_resource
+)
 from llm_provider import (
     generate_suzhou_answer, generate_suzhou_vision_answer, 
     extract_highlighted_vocab_from_image,
     get_current_model_config, SUPPORTED_PROVIDERS
 )
-from vocab_service import create_vocab_session, get_vocab_session, update_vocab_session
+from vocab_service import (
+    create_vocab_session, get_vocab_session, update_vocab_session,
+    get_user_latest_vocab_session
+)
 from vocab_aggregator import (
     add_image_to_batch, trigger_immediate_batch_extraction,
     get_batch_image_count
@@ -211,7 +217,13 @@ async def process_feishu_im_message_task(event: dict):
                     if k in user_query:
                         user_active_subjects[sender_id] = v
                         card_to_send = build_subject_workbench_card(v)
-                        break
+            # 意图 2.5：在英语科目下要求生成默写清单/列表
+            elif active_subj == "english" and any(k in user_query for k in ["默写", "清单", "列表", "自测"]):
+                latest_session = get_user_latest_vocab_session(sender_id)
+                if latest_session and latest_session.get("items"):
+                    card_to_send = build_vocab_checklist_card(latest_session["session_id"], latest_session["items"], show_answers=False)
+                else:
+                    card_to_send = build_subject_workbench_card("english")
 
             # 意图 3：英语单词查询（包含关键词或在英语模式下的纯英文词汇）
             elif user_query.startswith("查单词") or user_query.startswith("单词") or (active_subj == "english" and re.match(r"^[a-zA-Z\s\-]+$", user_query)):
@@ -442,18 +454,29 @@ async def feishu_event_handler(request: Request, background_tasks: BackgroundTas
         elif action_type == "generate_dictation_checklist" or action_type == "dictate_step":
             session_id = action_val.get("session_id", "demo")
             session = get_vocab_session(session_id)
-            items = session.get("items", []) if session else []
-            checklist_card = build_vocab_checklist_card(session_id, items, show_answers=False)
+            if not session:
+                session = get_user_latest_vocab_session(sender_id)
+            if not session:
+                demo_items = [
+                    {"phrase": "take...seriously", "phonetic": "/teɪk ˈsɪəriəsli/", "meaning": "认真对待；严肃处理", "note": "Unit 1 核心短语"},
+                    {"phrase": "pay attention to", "phonetic": "/peɪ əˈtenʃn tu/", "meaning": "注意；留心", "note": "后接 doing"},
+                    {"phrase": "generous", "phonetic": "/ˈdʒenərəs/", "meaning": "慷慨的；大方的", "note": "核心形容词"}
+                ]
+                session = create_vocab_session(sender_id or "demo_user", demo_items, "课文重点词汇默写清单")
+            items = session.get("items", [])
+            checklist_card = build_vocab_checklist_card(session["session_id"], items, show_answers=False)
             open_message_id = body.get("open_message_id", "")
-            if open_message_id:
-                background_tasks.add_task(
-                    reply_interactive_card,
-                    open_message_id,
-                    checklist_card,
-                    os.getenv("FEISHU_APP_ID", "").strip(),
-                    os.getenv("FEISHU_APP_SECRET", "").strip()
-                )
-            return {"toast": {"type": "success", "content": "📝 默写清单已生成！"}, "card": checklist_card}
+            open_chat_id = body.get("open_chat_id", "")
+            background_tasks.add_task(
+                send_card_to_dialog,
+                checklist_card,
+                open_message_id,
+                open_chat_id,
+                sender_id,
+                os.getenv("FEISHU_APP_ID", "").strip(),
+                os.getenv("FEISHU_APP_SECRET", "").strip()
+            )
+            return {"toast": {"type": "success", "content": "已在对话框中回复默写列表！"}}
         elif action_type == "toggle_checklist_answers":
             session_id = action_val.get("session_id", "demo")
             show_ans = action_val.get("show_answers", False)
@@ -568,15 +591,19 @@ async def process_vocab_bot_im_message_task(event: dict):
             if not user_query or user_query in ["菜单", "menu", "help", "帮助", "开始", "你好", "hi", "hello", "背单词", "背词"]:
                 card_to_send = build_vocab_bot_welcome_card()
 
-            # 意图 2：开始默写 / 练习
-            elif any(k in user_query for k in ["默写", "自测", "练习"]):
-                demo_items = [
-                    {"phrase": "take...seriously", "phonetic": "/teɪk ˈsɪəriəsli/", "meaning": "认真对待；严肃处理", "note": "Unit 1 核心短语"},
-                    {"phrase": "pay attention to", "phonetic": "/peɪ əˈtenʃn tu/", "meaning": "注意；留心", "note": "后接 doing 动名词"},
-                    {"phrase": "generous", "phonetic": "/ˈdʒenərəs/", "meaning": "慷慨的；大方的", "note": "核心形容词"}
-                ]
-                session = create_vocab_session(sender_id, demo_items, "课文高亮划线默写自测")
-                card_to_send = build_vocab_dictation_card(session["session_id"], session["items"], 0, False)
+            # 意图 2：生成默写清单 / 默写列表 / 默写自测（直接在对话框中回复默写列表）
+            elif any(k in user_query for k in ["默写", "清单", "列表", "自测", "练习"]):
+                latest_session = get_user_latest_vocab_session(sender_id)
+                if latest_session and latest_session.get("items"):
+                    card_to_send = build_vocab_checklist_card(latest_session["session_id"], latest_session["items"], show_answers=False)
+                else:
+                    demo_items = [
+                        {"phrase": "take...seriously", "phonetic": "/teɪk ˈsɪəriəsli/", "meaning": "认真对待；严肃处理", "note": "Unit 1 核心短语"},
+                        {"phrase": "pay attention to", "phonetic": "/peɪ əˈtenʃn tu/", "meaning": "注意；留心", "note": "后接 doing 动名词"},
+                        {"phrase": "generous", "phonetic": "/ˈdʒenərəs/", "meaning": "慷慨的；大方的", "note": "核心形容词"}
+                    ]
+                    session = create_vocab_session(sender_id, demo_items, "课文重点词汇默写清单")
+                    card_to_send = build_vocab_checklist_card(session["session_id"], session["items"], show_answers=False)
 
             # 意图 3：打印 / A4
             elif any(k in user_query for k in ["打印", "a4", "导出", "试卷"]):
@@ -669,25 +696,30 @@ async def feishu_vocab_event_handler(request: Request, background_tasks: Backgro
         elif action_type == "generate_dictation_checklist" or action_type == "dictate_step":
             session_id = action_val.get("session_id", "demo")
             session = get_vocab_session(session_id)
+            sender_id = body.get("open_id") or body.get("user_id") or ""
+            if not session:
+                session = get_user_latest_vocab_session(sender_id)
             if not session:
                 demo_items = [
                     {"phrase": "take...seriously", "phonetic": "/teɪk ˈsɪəriəsli/", "meaning": "认真对待；严肃处理", "note": "Unit 1 核心短语"},
                     {"phrase": "pay attention to", "phonetic": "/peɪ əˈtenʃn tu/", "meaning": "注意；留心", "note": "后接 doing"},
                     {"phrase": "generous", "phonetic": "/ˈdʒenərəs/", "meaning": "慷慨的；大方的", "note": "核心形容词"}
                 ]
-                session = create_vocab_session("demo_user", demo_items, "课文重点词汇默写清单")
+                session = create_vocab_session(sender_id or "demo_user", demo_items, "课文重点词汇默写清单")
             items = session.get("items", [])
             checklist_card = build_vocab_checklist_card(session["session_id"], items, show_answers=False)
             open_message_id = body.get("open_message_id", "")
-            if open_message_id:
-                background_tasks.add_task(
-                    reply_interactive_card,
-                    open_message_id,
-                    checklist_card,
-                    VOCAB_APP_ID,
-                    VOCAB_APP_SECRET
-                )
-            return {"toast": {"type": "success", "content": "📝 默写清单已生成！"}, "card": checklist_card}
+            open_chat_id = body.get("open_chat_id", "")
+            background_tasks.add_task(
+                send_card_to_dialog,
+                checklist_card,
+                open_message_id,
+                open_chat_id,
+                sender_id,
+                VOCAB_APP_ID,
+                VOCAB_APP_SECRET
+            )
+            return {"toast": {"type": "success", "content": "已在对话框中回复默写列表！"}}
         elif action_type == "toggle_checklist_answers":
             session_id = action_val.get("session_id", "demo")
             show_ans = action_val.get("show_answers", False)
