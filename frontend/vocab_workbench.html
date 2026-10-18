@@ -214,7 +214,10 @@
       font-weight: 700;
       color: #0f172a;
       font-size: 15px;
+      word-break: break-word;
+      line-height: 1.4;
     }
+
     .phonetic-tag {
       color: #64748b;
       font-family: 'Times New Roman', serif;
@@ -350,10 +353,13 @@
     }
     .answer-box.revealed { display: block; }
     .answer-phrase {
-      font-size: 24px;
+      font-size: 22px;
       font-weight: 700;
       color: var(--primary);
+      word-break: break-word;
+      line-height: 1.4;
     }
+
     .answer-phonetic {
       color: #64748b;
       font-size: 15px;
@@ -472,9 +478,11 @@
     .td-num { text-align: center; width: 40px; }
     .td-meaning { width: 45%; }
     .td-handwriting {
-      height: 38px;
+      min-height: 44px;
+      height: 44px;
       border-bottom: 1px dashed #666;
     }
+
 
     /* 提示 Toast */
     .toast-msg {
