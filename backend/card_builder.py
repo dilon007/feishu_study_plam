@@ -583,16 +583,10 @@ def build_vocab_list_card(session_id: str, items: list[dict], title: str = "课�
                         }
                     }
                 ]
-            },
-            {
-                "tag": "action",
-                "actions": [
-                    {"tag": "button", "text": {"tag": "plain_text", "content": "🔙 返回英语工作台"}, "type": "default", "value": {"action": "select_subject", "subject": "english"}},
-                    {"tag": "button", "text": {"tag": "plain_text", "content": "🔄 更换其他科目"}, "type": "default", "value": {"action": "back_to_menu"}}
-                ]
             }
         ]
     }
+
 
 def build_vocab_dictation_card(session_id: str, items: list[dict], current_index: int = 0, show_answer: bool = False) -> dict:
     """
