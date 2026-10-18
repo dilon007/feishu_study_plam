@@ -752,10 +752,13 @@ def build_vocab_bot_welcome_card() -> dict:
         ]
     }
 
-def build_image_batch_received_card(current_count: int, wait_seconds: int = 30) -> dict:
+def build_image_batch_received_card(current_count: int, wait_seconds: int = 30, user_id: str = "") -> dict:
     """
     构建多图连续上传接收进度卡片：
-    告知用户当前图片已进入防抖聚合队列，重置倒计时，可继续发送下一页截图。
+    包含：
+    1. 当前已接收图片数量
+    2. 30 秒倒计时说明（支持连续发图重置倒计时并跨页拼接）
+    3. 【⚡ 立即识别生成】交互按钮（点击后无需等待 30 秒，立即开始多模态提取）
     """
     return {
         "config": {"wide_screen_mode": True},
@@ -769,10 +772,46 @@ def build_image_batch_received_card(current_count: int, wait_seconds: int = 30) 
                 "text": {
                     "tag": "lark_md",
                     "content": (
-                        f"⏱️ **已启动 {wait_seconds} 秒多图聚合倒计时**\n\n"
-                        f"- 📖 **若有连续下半页或下一页**：请继续拍照发送，系统将自动进行**跨页接缝拼接与去重**；\n"
-                        f"- ☕ **若已发完**：请稍候约 {wait_seconds} 秒，系统将自动开始识别提取并生成背诵/默写清单~"
+                        f"⏱️ **当前模式：{wait_seconds} 秒自动聚合识别**\n\n"
+                        f"- 📖 **若有连续下半页或下一页**：请继续拍照发送，系统将自动进行**跨页接缝拼接与去重**并重置倒计时；\n"
+                        f"- ⚡ **若已发完且不想等待**：可直接点击下方**【⚡ 立即识别生成】**按钮立刻开始提取；\n"
+                        f"- ☕ **不点击也将自动开始**：静待约 {wait_seconds} 秒无新图后，系统将自动提取。"
                     )
+                }
+            },
+            {"tag": "hr"},
+            {
+                "tag": "action",
+                "actions": [
+                    {
+                        "tag": "button",
+                        "text": {"tag": "plain_text", "content": "⚡ 立即识别生成"},
+                        "type": "primary",
+                        "value": {
+                            "action": "trigger_immediate_extraction",
+                            "user_id": user_id
+                        }
+                    }
+                ]
+            }
+        ]
+    }
+
+def build_image_processing_card(img_count: int = 1) -> dict:
+    """构建正在识别中的卡片反馈"""
+    count_str = f"（共 {img_count} 张图片）" if img_count > 1 else ""
+    return {
+        "config": {"wide_screen_mode": True},
+        "header": {
+            "template": "turquoise",
+            "title": {"tag": "plain_text", "content": f"⏳ 正在识别生成中 {count_str}..."}
+        },
+        "elements": [
+            {
+                "tag": "div",
+                "text": {
+                    "tag": "lark_md",
+                    "content": "🚀 已立即启动多模态视觉大模型提取！正在进行课文划线词汇识别与跨页接缝拼接，识别完成后将自动推送词汇清单卡片，请稍候约 3~5 秒..."
                 }
             }
         ]

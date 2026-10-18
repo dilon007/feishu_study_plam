@@ -17,7 +17,8 @@ from card_builder import (
     build_physics_card, build_chemistry_card, build_word_card,
     build_ancient_card, build_qa_result_card,
     build_vocab_list_card, build_vocab_dictation_card,
-    build_vocab_bot_welcome_card
+    build_vocab_bot_welcome_card, build_image_batch_received_card,
+    build_image_processing_card
 )
 from feishu_client import reply_interactive_card, send_chat_card, download_image_resource
 from llm_provider import (
@@ -26,7 +27,10 @@ from llm_provider import (
     get_current_model_config, SUPPORTED_PROVIDERS
 )
 from vocab_service import create_vocab_session, get_vocab_session, update_vocab_session
-from vocab_aggregator import add_image_to_batch
+from vocab_aggregator import (
+    add_image_to_batch, trigger_immediate_batch_extraction,
+    get_batch_image_count
+)
 import httpx
 from dotenv import load_dotenv
 
@@ -446,6 +450,16 @@ async def feishu_event_handler(request: Request, background_tasks: BackgroundTas
             session = get_vocab_session(session_id)
             items = session.get("items", []) if session else []
             return {"card": build_vocab_list_card(session_id, items)}
+        elif action_type == "trigger_immediate_extraction":
+            target_user = action_val.get("user_id") or sender_id
+            img_count = get_batch_image_count(target_user)
+            background_tasks.add_task(
+                trigger_immediate_batch_extraction,
+                target_user,
+                os.getenv("FEISHU_APP_ID", "").strip(),
+                os.getenv("FEISHU_APP_SECRET", "").strip()
+            )
+            return {"card": build_image_processing_card(img_count)}
         
         return {"toast": {"type": "info", "content": "功能已就绪"}}
 
@@ -652,6 +666,17 @@ async def feishu_vocab_event_handler(request: Request, background_tasks: Backgro
             session = get_vocab_session(session_id)
             items = session.get("items", []) if session else []
             return {"card": build_vocab_list_card(session_id, items)}
+        elif action_type == "trigger_immediate_extraction":
+            sender_id = body.get("open_id") or body.get("user_id") or body.get("open_chat_id", "")
+            target_user = action_val.get("user_id") or sender_id
+            img_count = get_batch_image_count(target_user)
+            background_tasks.add_task(
+                trigger_immediate_batch_extraction,
+                target_user,
+                VOCAB_APP_ID,
+                VOCAB_APP_SECRET
+            )
+            return {"card": build_image_processing_card(img_count)}
         
         return {"toast": {"type": "info", "content": "功能已就绪"}}
 
