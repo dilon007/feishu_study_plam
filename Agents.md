@@ -156,6 +156,8 @@ feishu_study_plam/
 | 2026-10-18 | Feature | 升级默写模式为【纯中文 Todo List 默写清单】：将逐词翻页默写重构为一键生成纯中文默写自测清单，每条附带 Todo List 标识（- [ ]），无英文泄露防作弊；采用就地刷新与异步新卡片双通道投递彻底杜绝无响应，并提供答案核对切换与英汉对照回退 | `backend/card_builder.py`, `backend/main.py`, `Agents.md` |
 | 2026-10-18 | Feature | 优化默写清单生成体验为【直接在对话框中回复】：新增 send_card_to_dialog 多策略投递保障，点击“生成默写清单”或在会话中输入“默写清单/列表”时，不再覆盖原词汇卡，而是直接在对话框中回复全新的纯中文 Todo List 默写自测卡，支持记忆用户最近拍照会话 | `backend/feishu_client.py`, `backend/vocab_service.py`, `backend/main.py`, `Agents.md` |
 | 2026-10-18 | Feature | 单独隔离并支持【专属数理化拍照搜题机器人（苏九数理化搜题伴读）】：新增 `FEISHU_STEM_APP_ID`/`SECRET` 凭证与专属事件网关 `/api/feishu/stem_event`，专精初三数学（苏科版）、物理（苏科版）、化学（初三化学）试卷拍照识题、苏州考标规范步骤推导与中考评分踩分点剖析，杜绝超纲步骤 | `backend/feishu_client.py`, `backend/card_builder.py`, `backend/main.py`, `Agents.md` |
+| 2026-10-18 | Bugfix | 移除课堂默写卷模式下的所有答案提示信息：彻底清除打印自测卷表格中文释义列中的 [提示]/考点说明（防止英文原词与语法答案泄露），将表头规范为“中文释义（请默写对应英文短语/单词）”，保留纯中文题目保障真实自测效果 | `frontend/vocab_workbench.html`, `Agents.md` |
+
 
 ---
 

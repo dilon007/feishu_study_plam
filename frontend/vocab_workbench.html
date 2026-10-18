@@ -615,7 +615,7 @@
             <button class="btn btn-outline" style="padding: 4px 10px; font-size: 12px;" onclick="resetDictation()">🔄 重头开始</button>
           </div>
 
-          <div class="prompt-label">【中文释义提示】</div>
+          <div class="prompt-label">【中文释义】</div>
           <div class="chinese-prompt" id="dictate-chinese-prompt">认真对待；严肃处理</div>
 
           <div class="user-spelling-area">
@@ -946,7 +946,7 @@
           <thead>
             <tr>
               <th style="width: 45px;">题号</th>
-              <th style="width: 42%;">中文释义（请根据提示写出英文词组）</th>
+              <th style="width: 42%;">中文释义（请默写对应英文短语/单词）</th>
               <th>英文词组 / 单词默写规范书写区</th>
               <th style="width: 60px;">评分</th>
             </tr>
@@ -957,7 +957,6 @@
                 <td class="td-num">${idx + 1}</td>
                 <td class="td-meaning">
                   <strong>${item.meaning}</strong>
-                  ${item.note ? `<div style="font-size: 11px; color: #555;">[提示]: ${item.note}</div>` : ''}
                 </td>
                 <td class="td-handwriting"></td>
                 <td style="text-align: center;"></td>
