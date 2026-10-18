@@ -26,6 +26,7 @@ from llm_provider import (
     get_current_model_config, SUPPORTED_PROVIDERS
 )
 from vocab_service import create_vocab_session, get_vocab_session, update_vocab_session
+from vocab_aggregator import add_image_to_batch
 import httpx
 from dotenv import load_dotenv
 
@@ -301,12 +302,17 @@ async def process_feishu_im_message_task(event: dict):
                 # 从飞书开放平台下载图片原始二进制数据
                 img_bytes = await download_image_resource(message_id, image_key)
                 if img_bytes:
-                    # 场景 1：当前为英语学科 -> 自动识别课文高亮划线词组并生成背诵/默写/打印会话
+                    # 场景 1：当前为英语学科 -> 自动识别课文高亮划线词组并生成背诵/默写/打印会话（支持多图30秒防抖聚合与跨图接缝智能拼接）
                     if active_subj == "english":
-                        vocab_items = await extract_highlighted_vocab_from_image(img_bytes)
-                        if vocab_items:
-                            session = create_vocab_session(sender_id, vocab_items, "课文高亮划线词组提取")
-                            card_to_send = build_vocab_list_card(session["session_id"], session["items"])
+                        await add_image_to_batch(
+                            user_id=sender_id,
+                            chat_id=chat_id,
+                            message_id=message_id,
+                            img_bytes=img_bytes,
+                            app_id=os.getenv("FEISHU_APP_ID", "").strip(),
+                            app_secret=os.getenv("FEISHU_APP_SECRET", "").strip()
+                        )
+                        return
 
                     # 场景 2：数理化或其他学科 -> 中考题目分步解题推导
                     if not card_to_send:
@@ -497,28 +503,17 @@ async def process_vocab_bot_im_message_task(event: dict):
                     app_id=VOCAB_APP_ID, app_secret=VOCAB_APP_SECRET
                 )
                 if img_bytes:
-                    vocab_items = await extract_highlighted_vocab_from_image(img_bytes)
-                    if vocab_items:
-                        session = create_vocab_session(sender_id, vocab_items, "课文高亮划线重点词组")
-                        card_to_send = build_vocab_list_card(session["session_id"], session["items"])
-                    else:
-                        card_to_send = {
-                            "config": {"wide_screen_mode": True},
-                            "header": {"template": "orange", "title": {"tag": "plain_text", "content": "⚠️ 课文划线识别提示"}},
-                            "elements": [
-                                {
-                                    "tag": "div",
-                                    "text": {"tag": "lark_md", "content": "未能从截图中检测到明显的荧光笔高亮、下划线或手写划线词组。\n\n💡 **小建议**：请使用彩色荧光笔或铅笔在课本生词/短语下方划线后重新拍照发送，效果最佳！"}
-                                },
-                                {
-                                    "tag": "action",
-                                    "actions": [
-                                        {"tag": "button", "text": {"tag": "plain_text", "content": "📸 查看示例卡片"}, "type": "primary", "value": {"action": "vocab_bot_demo"}},
-                                        {"tag": "button", "text": {"tag": "plain_text", "content": "🔙 返回主导航"}, "type": "default", "value": {"action": "back_to_vocab_menu"}}
-                                    ]
-                                }
-                            ]
-                        }
+                    # 加入 30 秒防抖聚合队列，重置倒计时并自动跨图接缝智能拼接
+                    await add_image_to_batch(
+                        user_id=sender_id,
+                        chat_id=chat_id,
+                        message_id=message_id,
+                        img_bytes=img_bytes,
+                        app_id=VOCAB_APP_ID,
+                        app_secret=VOCAB_APP_SECRET
+                    )
+                    # 结果由聚合器在 30 秒静默期结束后统一推送卡片，无需在此即刻回复
+                    return
                 else:
                     card_to_send = {
                         "config": {"wide_screen_mode": True},

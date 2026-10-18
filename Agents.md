@@ -148,6 +148,8 @@ feishu_study_plam/
 | 2026-10-14 | Feature | 追加初三英语课文划线词组背诵与默写模块：支持课文截图高亮划线识别提取、英->中确认与在线修改释义、卡片/网页逐词翻页默写自测、A4纸规范打印排版（背诵清单与课堂自测卷双模） | `backend/vocab_service.py`, `frontend/vocab_workbench.html`, `backend/card_builder.py`, `backend/llm_provider.py`, `backend/main.py`, `Agents.md` |
 | 2026-10-15 | Bugfix | 修复题目（尤其是物理搜题）会不断反复发送答案的问题；定位为飞书 Webhook 3秒超时重发机制与缺少幂等去重所致：引入 `BackgroundTasks` 异步分发大模型解题并即时响应 HTTP 200，新增 `event_id`/`message_id` 双重内存幂等去重器，彻底根除重复推送 | `backend/main.py`, `Agents.md` |
 | 2026-10-15 | Feature | 单独隔离并支持【专属背单词机器人（苏九背词伴读）】：重构 `feishu_client` 支持多应用 Token 隔离缓存，新增专属网关 `/api/feishu/vocab_event` 与专属欢迎卡片，学生发图 100% 专精课文划线词汇识别与翻页默写自测 | `backend/feishu_client.py`, `backend/card_builder.py`, `backend/main.py`, `.env`, `Agents.md` |
+| 2026-10-18 | Feature | 支持英语课文截图多图连续上传与跨页接缝智能拼接：新增 30 秒防抖聚合队列（连续发图自动重置倒计时并即时反馈接收进度），倒计时结束后多图并发送入 Gemini 3.5 Flash 视觉模型，智能拼接跨图截断短语/长句并自动消除重叠重复，全量输出中考词汇卡片 | `backend/vocab_aggregator.py`, `backend/llm_provider.py`, `backend/main.py`, `backend/card_builder.py`, `Agents.md` |
+
 
 ---
 

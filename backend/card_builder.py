@@ -752,4 +752,31 @@ def build_vocab_bot_welcome_card() -> dict:
         ]
     }
 
+def build_image_batch_received_card(current_count: int, wait_seconds: int = 30) -> dict:
+    """
+    构建多图连续上传接收进度卡片：
+    告知用户当前图片已进入防抖聚合队列，重置倒计时，可继续发送下一页截图。
+    """
+    return {
+        "config": {"wide_screen_mode": True},
+        "header": {
+            "template": "blue",
+            "title": {"tag": "plain_text", "content": f"📥 已接收第 {current_count} 张课文截图"}
+        },
+        "elements": [
+            {
+                "tag": "div",
+                "text": {
+                    "tag": "lark_md",
+                    "content": (
+                        f"⏱️ **已启动 {wait_seconds} 秒多图聚合倒计时**\n\n"
+                        f"- 📖 **若有连续下半页或下一页**：请继续拍照发送，系统将自动进行**跨页接缝拼接与去重**；\n"
+                        f"- ☕ **若已发完**：请稍候约 {wait_seconds} 秒，系统将自动开始识别提取并生成背诵/默写清单~"
+                    )
+                }
+            }
+        ]
+    }
+
+
 

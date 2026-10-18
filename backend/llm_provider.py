@@ -233,55 +233,81 @@ async def generate_suzhou_vision_answer(image_bytes: bytes, user_prompt: str = "
 
     return "识别题目截图时服务繁忙，请稍后重新发送或直接输入文字提问。"
 
-async def extract_highlighted_vocab_from_image(image_bytes: bytes, mime_type: str = "image/jpeg") -> list[dict]:
+async def extract_highlighted_vocab_from_multi_images(image_bytes_list: list[bytes], mime_type: str = "image/jpeg") -> list[dict]:
     """
-    专门针对英语课文截图：识别图像中被荧光笔高亮、彩色标注、圆圈或下划线划出的英文生词与词组短语。
-    结合译林牛津版九年级英语考标，输出结构化短语、音标与中文注释列表。
+    专门针对英语课文截图（支持单张或连续多张多页课文截图）：
+    1. 识别图像中被荧光笔高亮、彩色标注、圆圈或下划线划出的英文生词、短语与重点句子；
+    2. 【跨图接缝智能拼接】：针对多图跨页截断的划线短语/长句，自动对齐接缝处并拼接为完整条目，消除重叠重复；
+    3. 严格保持笔迹连续性，输出中考规范标准 JSON 列表。
     """
-    if not image_bytes:
+    if not image_bytes_list:
+        return []
+
+    # 过滤空图片字节
+    valid_images = [b for b in image_bytes_list if b]
+    if not valid_images:
         return []
 
     api_key = os.getenv("AI_API_KEY", "").strip()
     if not api_key:
-        # 无 API KEY 时的模拟兜底（方便本地演示与测试）
         return [
-            {"phrase": "take...seriously", "phonetic": "/teɪk ˈsɪəriəsli/", "meaning": "认真对待；严肃处理", "note": "译林9A Unit 1 重点短语"},
-            {"phrase": "pay attention to", "phonetic": "/peɪ əˈtenʃn tu/", "meaning": "注意；留心", "note": "后接名词/代词/动名词ing"},
-            {"phrase": "generous", "phonetic": "/ˈdʒenərəs/", "meaning": "慷慨的；大方的", "note": "adj. 中考核心性格形容词"},
-            {"phrase": "make up one's mind", "phonetic": "/meɪk ʌp wʌnz maɪnd/", "meaning": "下定决心", "note": "同义词 decide to do"},
-            {"phrase": "give up", "phonetic": "/ɡɪv ʌp/", "meaning": "放弃", "note": "后接 doing 动名词"}
+            {"phrase": "take...seriously", "phonetic": "/teɪk ˈsɪəriəsli/", "meaning": "认真对待；严肃处理", "note": "重点短语"},
+            {"phrase": "pay attention to", "phonetic": "/peɪ əˈtenʃn tu/", "meaning": "注意；留心", "note": "后接 doing 动名词"},
+            {"phrase": "generous", "phonetic": "/ˈdʒenərəs/", "meaning": "慷慨的；大方的", "note": "核心形容词"}
         ]
 
     provider_key = os.getenv("AI_PROVIDER", "gemini").lower().strip()
     preset = SUPPORTED_PROVIDERS.get(provider_key, SUPPORTED_PROVIDERS["gemini"])
     base_url = os.getenv("AI_BASE_URL", "").strip() or preset["base_url"]
     
-    # 优先使用旗舰多模态模型
     candidate_models = ["gemini-3.5-flash", "gemini-3.6-flash", "gemini-3.5-flash-lite"]
 
-    b64_image = base64.b64encode(image_bytes).decode("utf-8")
-    data_url = f"data:{mime_type};base64,{b64_image}"
+    is_multi = len(valid_images) > 1
 
-    instruction = (
-        "【苏州市九年级英语课文划线词汇与重点句型精准提取】\n"
-        "你是一位精通苏州市初中英语（译林牛津版9A/9B）的中考教研名师。请仔细观察这张课文截图，找出学生在课本上做出的【人工标记生词、短语与重点句子】。\n"
-        "【重点识别以下标记迹象】：\n"
-        "1. 【荧光笔高亮涂色】：浅黄色、黄绿色、粉红色、天蓝色、淡紫色等半透明覆盖涂抹；\n"
-        "2. 【手写划线】：印刷体正下方的横线、下划线、双横线、波浪线（包含铅笔灰线、黑色中性笔、红色圆珠笔）；\n"
-        "3. 【圈选标记】：用手写圆圈、方框框选出来的重点词汇或短语；\n"
-        "4. 【批注旁引】：旁边带有箭头指向、引出线或旁边写有中文翻译手写批注对应的英文内容。\n"
-        "【核心提取规范（严格执行）】：\n"
-        "1. 【划线物理连续性优先（绝对禁止擅自拆散连贯划线）】：\n"
-        "   - 若一条手写划线或荧光笔高亮在空间上是【连续划在一起的】（如划了 'kept a diary and recorded her experiences'，划线笔迹连续未断），务必【作为一整个独立条目整体记录】！\n"
-        "   - 绝不可因为其中看似包含两个考点短语就自作聪明强行拆分成两条；保持学生划线时的连贯完整形态（保留中间的 and 等连接词）；\n"
-        "   - 只有当学生在课本上划出的是【两处明显断开、独立的笔迹】时，才分成两个独立条目；\n"
-        "2. 【整句划线整体记录】：如果学生把一整句话全部划了线，完整保留整句，给出中考规范地道全句翻译，并在 note 中标注句型考点（如：宾语从句/高分句型/主旨名句）；\n"
-        "3. 【单个生词与短语】：若仅划出单个单词或独立短语，给出标准音标和中考核心释义；\n"
-        "4. 严格输出标准 JSON 数组格式，严禁包含任何前言、结语或自然语言废话，格式如下：\n"
-        "[\n"
-        "  {\"phrase\": \"连续划线的完整短语、词组或整句\", \"phonetic\": \"/音标/或'-'\", \"meaning\": \"中文注释释义或整句翻译\", \"note\": \"考点提醒或句型搭配说明\"}\n"
-        "]"
-    )
+    if is_multi:
+        instruction = (
+            f"【苏州市九年级英语课文多图连续划线提取与跨图接缝智能拼接】\n"
+            f"你是一位精通苏州市初中英语（译林牛津版9A/9B）的中考教研名师。\n"
+            f"学生按阅读先后顺序上传了 {len(valid_images)} 张连续的课文截图（图1、图2...按阅读先后顺序拍摄）。\n\n"
+            "【极其关键的跨图接缝提取规范（必须严格执行）】：\n"
+            "1. 【跨图接缝处连续拼接】：请特别仔细比对【上一张图片底部/末尾】与【下一张图片顶部/开头】的连接区域！\n"
+            "   - 若学生划线的短语或一整句话跨越了图片分界（例如上一张图末尾划了前半段，下一张图开头划了后半段），务必将其【智能合并拼接还原为完整的一整条英文短语/句子】！严禁截断切碎成两截；\n"
+            "2. 【重叠拍摄自动去重】：如果两张照片在上下边缘有部分重叠文本，重合区域内的划线词组只提取一次，绝不重复输出；\n"
+            "3. 【划线物理连续性优先】：每张图内部连续划线的内容同样严格作为一条整体记录，不要擅自拆分；\n"
+            "4. 【整句划线整体记录】：整句划线的保留整句，给出规范地道整句中考译文；单个词组给出音标和核心考点释义；\n"
+            "5. 严格输出标准 JSON 数组格式，严禁包含任何前言、结语或自然语言废话，格式如下：\n"
+            "[\n"
+            "  {\"phrase\": \"跨图拼接或连续划线的完整短语、词组或整句\", \"phonetic\": \"/音标/或'-'\", \"meaning\": \"中文注释释义或整句翻译\", \"note\": \"考点提醒或句型说明\"}\n"
+            "]"
+        )
+    else:
+        instruction = (
+            "【苏州市九年级英语课文划线词汇与重点句型精准提取】\n"
+            "你是一位精通苏州市初中英语（译林牛津版9A/9B）的中考教研名师。请仔细观察这张课文截图，找出学生在课本上做出的【人工标记生词、短语与重点句子】。\n"
+            "【重点识别以下标记迹象】：\n"
+            "1. 【荧光笔高亮涂色】：浅黄色、黄绿色、粉红色、天蓝色、淡紫色等半透明覆盖涂抹；\n"
+            "2. 【手写划线】：印刷体正下方的横线、下划线、双横线、波浪线（包含铅笔灰线、黑色中性笔、红色圆珠笔）；\n"
+            "3. 【圈选标记】：用手写圆圈、方框框选出来的重点词汇或短语；\n"
+            "4. 【批注旁引】：旁边带有箭头指向、引出线或旁边写有中文翻译手写批注对应的英文内容。\n"
+            "【核心提取规范（严格执行）】：\n"
+            "1. 【划线物理连续性优先（绝对禁止擅自拆散连贯划线）】：\n"
+            "   - 若一条手写划线或荧光笔高亮在空间上是【连续划在一起的】（如划了 'kept a diary and recorded her experiences'，划线笔迹连续未断），务必【作为一整个独立条目整体记录】！\n"
+            "   - 绝不可因为其中看似包含两个考点短语就自作聪明强行拆分成两条；保持学生划线时的连贯完整形态（保留中间的 and 等连接词）；\n"
+            "   - 只有当学生在课本上划出的是【两处明显断开、独立的笔迹】时，才分成两个独立条目；\n"
+            "2. 【整句划线整体记录】：如果学生把一整句话全部划了线，完整保留整句，给出中考规范地道全句翻译，并在 note 中标注句型考点（如：宾语从句/高分句型/主旨名句）；\n"
+            "3. 【单个生词与短语】：若仅划出单个单词或独立短语，给出标准音标和中考核心释义；\n"
+            "4. 严格输出标准 JSON 数组格式，严禁包含任何前言、结语或自然语言废话，格式如下：\n"
+            "[\n"
+            "  {\"phrase\": \"连续划线的完整短语、词组或整句\", \"phonetic\": \"/音标/或'-'\", \"meaning\": \"中文注释释义或整句翻译\", \"note\": \"考点提醒或句型搭配说明\"}\n"
+            "]"
+        )
+
+    # 构造图文联合内容载荷（多图并排输入）
+    user_content = [{"type": "text", "text": instruction}]
+    for img_bytes in valid_images:
+        b64_image = base64.b64encode(img_bytes).decode("utf-8")
+        data_url = f"data:{mime_type};base64,{b64_image}"
+        user_content.append({"type": "image_url", "image_url": {"url": data_url}})
 
     headers = {
         "Authorization": f"Bearer {api_key}",
@@ -289,21 +315,18 @@ async def extract_highlighted_vocab_from_image(image_bytes: bytes, mime_type: st
     }
     endpoint = f"{base_url.rstrip('/')}/chat/completions"
 
-    async with httpx.AsyncClient(timeout=45) as client:
+    async with httpx.AsyncClient(timeout=60) as client:
         for model_name in candidate_models:
             payload = {
                 "model": model_name,
                 "messages": [
                     {
                         "role": "system", 
-                        "content": "You are a professional junior high school English teacher and OCR specialist. Focus strictly on detecting hand-drawn underlines, highlighter ink, or circled text. Output ONLY valid JSON array."
+                        "content": "You are a professional junior high school English teacher and OCR specialist. Focus strictly on detecting hand-drawn underlines, highlighter ink, or circled text. For multiple sequential images, carefully stitch together any phrases that cross image boundaries. Output ONLY valid JSON array."
                     },
                     {
                         "role": "user",
-                        "content": [
-                            {"type": "text", "text": instruction},
-                            {"type": "image_url", "image_url": {"url": data_url}}
-                        ]
+                        "content": user_content
                     }
                 ],
                 "temperature": 0.1
@@ -314,14 +337,12 @@ async def extract_highlighted_vocab_from_image(image_bytes: bytes, mime_type: st
                     data = resp.json()
                     if "choices" in data and len(data["choices"]) > 0:
                         raw_content = data["choices"][0]["message"]["content"].strip()
-                        print(f"[Vocab Vision Model {model_name} Output]: {raw_content[:300]}")
+                        print(f"[Vocab Multi-Vision Model {model_name} Output ({len(valid_images)} images)]: {raw_content[:300]}")
                         
-                        # 清理 markdown 包裹
                         clean_json_str = re.sub(r"^```json\s*", "", raw_content, flags=re.IGNORECASE)
                         clean_json_str = re.sub(r"^```\s*", "", clean_json_str)
                         clean_json_str = re.sub(r"\s*```$", "", clean_json_str).strip()
 
-                        # 使用正则精确截取最外层 JSON 数组 [...]
                         start_idx = clean_json_str.find("[")
                         end_idx = clean_json_str.rfind("]")
                         if start_idx != -1 and end_idx != -1 and end_idx > start_idx:
@@ -331,12 +352,16 @@ async def extract_highlighted_vocab_from_image(image_bytes: bytes, mime_type: st
                         if isinstance(parsed, list) and len(parsed) > 0:
                             return parsed
                 else:
-                    print(f"[Vocab Vision Model {model_name} HTTP {resp.status_code}] Error: {resp.text[:150]}")
+                    print(f"[Vocab Multi-Vision Model {model_name} HTTP {resp.status_code}] Error: {resp.text[:150]}")
             except Exception as e:
-                print(f"[Vocab Vision Model {model_name} Exception] {e}")
+                print(f"[Vocab Multi-Vision Model {model_name} Exception] {e}")
 
-    # 若所有模型扫描后均未检测到划线标记，返回空列表供上层做真实提示
     return []
+
+async def extract_highlighted_vocab_from_image(image_bytes: bytes, mime_type: str = "image/jpeg") -> list[dict]:
+    """单图识别包装（向后兼容）"""
+    return await extract_highlighted_vocab_from_multi_images([image_bytes], mime_type)
+
 
 
 
