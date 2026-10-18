@@ -166,24 +166,36 @@ async def send_card_to_dialog(
     app_secret: Optional[str] = None
 ) -> bool:
     """
-    通用对话框直接发送卡片函数：
+    通用对话框直接发送卡片函数（直接在主会话流中作为新消息气泡弹出，而非卡片下折叠回复）：
     多策略保障 100% 成功送达学生对话框：
-    1. 优先按 message_id 回复；
-    2. 若未提供或回复失败，按 open_id 直接私信发送；
-    3. 若未提供，按 chat_id 发送。
+    1. 优先按 chat_id（会话/群聊/单聊）在主对话框直接发送新消息卡片；
+    2. 若无 chat_id 或发送失败，按 user_id（open_id）在单聊主对话框发送新消息卡片；
+    3. 若前两者均无或失败，最后降级为按 message_id 回复。
     """
-    if message_id:
-        success = await reply_interactive_card(message_id, card_content, app_id, app_secret)
-        if success:
-            return True
-    if user_id:
-        success = await send_user_card(user_id, card_content, app_id, app_secret)
-        if success:
-            return True
+    print(f"[send_card_to_dialog] 准备投递卡片: chat_id={chat_id}, user_id={user_id}, message_id={message_id}")
     if chat_id:
         success = await send_chat_card(chat_id, card_content, app_id, app_secret)
         if success:
+            print(f"[send_card_to_dialog] 成功通过 chat_id={chat_id} 直接投递至会话主界面！")
             return True
+        else:
+            print(f"[send_card_to_dialog] 通过 chat_id={chat_id} 投递失败，尝试 user_id...")
+
+    if user_id:
+        success = await send_user_card(user_id, card_content, app_id, app_secret)
+        if success:
+            print(f"[send_card_to_dialog] 成功通过 user_id={user_id} 直接投递至单聊主界面！")
+            return True
+        else:
+            print(f"[send_card_to_dialog] 通过 user_id={user_id} 投递失败，尝试 message_id...")
+
+    if message_id:
+        success = await reply_interactive_card(message_id, card_content, app_id, app_secret)
+        if success:
+            print(f"[send_card_to_dialog] 已降级通过 message_id={message_id} 进行回复")
+            return True
+
+    print(f"[send_card_to_dialog] 所有投递通道均失败 (chat_id={chat_id}, user_id={user_id}, message_id={message_id})")
     return False
 
 async def download_image_resource(

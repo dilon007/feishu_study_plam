@@ -462,6 +462,18 @@ async def feishu_event_handler(request: Request, background_tasks: BackgroundTas
         elif action_type == "generate_dictation_checklist" or action_type == "dictate_step":
             session_id = action_val.get("session_id", "demo")
             session = get_vocab_session(session_id)
+            sender_id = (
+                body.get("open_id") 
+                or body.get("user_id") 
+                or body.get("context", {}).get("open_id", "") 
+                or body.get("context", {}).get("user_id", "") 
+                or ""
+            )
+            open_chat_id = (
+                body.get("open_chat_id") 
+                or body.get("context", {}).get("open_chat_id", "") 
+                or ""
+            )
             if not session:
                 session = get_user_latest_vocab_session(sender_id)
             if not session:
@@ -473,18 +485,16 @@ async def feishu_event_handler(request: Request, background_tasks: BackgroundTas
                 session = create_vocab_session(sender_id or "demo_user", demo_items, "课文重点词汇默写清单")
             items = session.get("items", [])
             checklist_card = build_vocab_checklist_card(session["session_id"], items, show_answers=False)
-            open_message_id = body.get("open_message_id", "")
-            open_chat_id = body.get("open_chat_id", "")
             background_tasks.add_task(
                 send_card_to_dialog,
                 checklist_card,
-                open_message_id,
+                "",  # 传空 message_id，防止在卡片下折叠回复，确保作为新消息直接出现在主对话框
                 open_chat_id,
                 sender_id,
                 os.getenv("FEISHU_APP_ID", "").strip(),
                 os.getenv("FEISHU_APP_SECRET", "").strip()
             )
-            return {"toast": {"type": "success", "content": "已在对话框中回复默写列表！"}}
+            return {"toast": {"type": "success", "content": "已在对话框中发送纯中文默写列表！"}}
         elif action_type == "toggle_checklist_answers":
             session_id = action_val.get("session_id", "demo")
             show_ans = action_val.get("show_answers", False)
@@ -704,7 +714,18 @@ async def feishu_vocab_event_handler(request: Request, background_tasks: Backgro
         elif action_type == "generate_dictation_checklist" or action_type == "dictate_step":
             session_id = action_val.get("session_id", "demo")
             session = get_vocab_session(session_id)
-            sender_id = body.get("open_id") or body.get("user_id") or ""
+            sender_id = (
+                body.get("open_id") 
+                or body.get("user_id") 
+                or body.get("context", {}).get("open_id", "") 
+                or body.get("context", {}).get("user_id", "") 
+                or ""
+            )
+            open_chat_id = (
+                body.get("open_chat_id") 
+                or body.get("context", {}).get("open_chat_id", "") 
+                or ""
+            )
             if not session:
                 session = get_user_latest_vocab_session(sender_id)
             if not session:
@@ -716,18 +737,16 @@ async def feishu_vocab_event_handler(request: Request, background_tasks: Backgro
                 session = create_vocab_session(sender_id or "demo_user", demo_items, "课文重点词汇默写清单")
             items = session.get("items", [])
             checklist_card = build_vocab_checklist_card(session["session_id"], items, show_answers=False)
-            open_message_id = body.get("open_message_id", "")
-            open_chat_id = body.get("open_chat_id", "")
             background_tasks.add_task(
                 send_card_to_dialog,
                 checklist_card,
-                open_message_id,
+                "",  # 传空 message_id，防止在卡片下折叠回复，确保作为新消息直接出现在主对话框
                 open_chat_id,
                 sender_id,
                 VOCAB_APP_ID,
                 VOCAB_APP_SECRET
             )
-            return {"toast": {"type": "success", "content": "已在对话框中回复默写列表！"}}
+            return {"toast": {"type": "success", "content": "已在对话框中发送纯中文默写列表！"}}
         elif action_type == "toggle_checklist_answers":
             session_id = action_val.get("session_id", "demo")
             show_ans = action_val.get("show_answers", False)
