@@ -17,6 +17,7 @@ from card_builder import (
     build_physics_card, build_chemistry_card, build_word_card,
     build_ancient_card, build_qa_result_card,
     build_vocab_list_card, build_vocab_dictation_card,
+    build_vocab_checklist_card,
     build_vocab_bot_welcome_card, build_image_batch_received_card,
     build_image_processing_card
 )
@@ -438,18 +439,35 @@ async def feishu_event_handler(request: Request, background_tasks: BackgroundTas
             title = action_val.get("title", "")
             res = query_ancient_text(title)
             return {"card": build_ancient_card(res)}
-        elif action_type == "dictate_step":
-            session_id = action_val.get("session_id", "")
-            idx = action_val.get("index", 0)
-            reveal = action_val.get("reveal", False)
+        elif action_type == "generate_dictation_checklist" or action_type == "dictate_step":
+            session_id = action_val.get("session_id", "demo")
             session = get_vocab_session(session_id)
             items = session.get("items", []) if session else []
-            return {"card": build_vocab_dictation_card(session_id, items, idx, reveal)}
-        elif action_type == "dictate_exit":
+            checklist_card = build_vocab_checklist_card(session_id, items, show_answers=False)
+            open_message_id = body.get("open_message_id", "")
+            if open_message_id:
+                background_tasks.add_task(
+                    reply_interactive_card,
+                    open_message_id,
+                    checklist_card,
+                    os.getenv("FEISHU_APP_ID", "").strip(),
+                    os.getenv("FEISHU_APP_SECRET", "").strip()
+                )
+            return {"toast": {"type": "success", "content": "📝 默写清单已生成！"}, "card": checklist_card}
+        elif action_type == "toggle_checklist_answers":
+            session_id = action_val.get("session_id", "demo")
+            show_ans = action_val.get("show_answers", False)
+            session = get_vocab_session(session_id)
+            items = session.get("items", []) if session else []
+            return {
+                "toast": {"type": "info", "content": "已显示参考答案" if show_ans else "已隐藏参考答案"},
+                "card": build_vocab_checklist_card(session_id, items, show_answers=show_ans)
+            }
+        elif action_type == "show_vocab_full_list" or action_type == "dictate_exit":
             session_id = action_val.get("session_id", "")
             session = get_vocab_session(session_id)
             items = session.get("items", []) if session else []
-            return {"card": build_vocab_list_card(session_id, items)}
+            return {"toast": {"type": "info", "content": "已切换为英汉对照清单"}, "card": build_vocab_list_card(session_id, items)}
         elif action_type == "trigger_immediate_extraction":
             target_user = action_val.get("user_id") or sender_id
             img_count = get_batch_image_count(target_user)
@@ -648,24 +666,42 @@ async def feishu_vocab_event_handler(request: Request, background_tasks: Backgro
             ]
             session = create_vocab_session("demo_user", demo_items, "课文高亮划线提取示例")
             return {"card": build_vocab_list_card(session["session_id"], session["items"])}
-        elif action_type == "dictate_step":
+        elif action_type == "generate_dictation_checklist" or action_type == "dictate_step":
             session_id = action_val.get("session_id", "demo")
-            idx = action_val.get("index", 0)
-            reveal = action_val.get("reveal", False)
             session = get_vocab_session(session_id)
             if not session:
                 demo_items = [
                     {"phrase": "take...seriously", "phonetic": "/teɪk ˈsɪəriəsli/", "meaning": "认真对待；严肃处理", "note": "Unit 1 核心短语"},
-                    {"phrase": "pay attention to", "phonetic": "/peɪ əˈtenʃn tu/", "meaning": "注意；留心", "note": "后接 doing"}
+                    {"phrase": "pay attention to", "phonetic": "/peɪ əˈtenʃn tu/", "meaning": "注意；留心", "note": "后接 doing"},
+                    {"phrase": "generous", "phonetic": "/ˈdʒenərəs/", "meaning": "慷慨的；大方的", "note": "核心形容词"}
                 ]
-                session = create_vocab_session("demo_user", demo_items, "课文划线默写")
+                session = create_vocab_session("demo_user", demo_items, "课文重点词汇默写清单")
             items = session.get("items", [])
-            return {"card": build_vocab_dictation_card(session["session_id"], items, idx, reveal)}
-        elif action_type == "dictate_exit":
+            checklist_card = build_vocab_checklist_card(session["session_id"], items, show_answers=False)
+            open_message_id = body.get("open_message_id", "")
+            if open_message_id:
+                background_tasks.add_task(
+                    reply_interactive_card,
+                    open_message_id,
+                    checklist_card,
+                    VOCAB_APP_ID,
+                    VOCAB_APP_SECRET
+                )
+            return {"toast": {"type": "success", "content": "📝 默写清单已生成！"}, "card": checklist_card}
+        elif action_type == "toggle_checklist_answers":
+            session_id = action_val.get("session_id", "demo")
+            show_ans = action_val.get("show_answers", False)
+            session = get_vocab_session(session_id)
+            items = session.get("items", []) if session else []
+            return {
+                "toast": {"type": "info", "content": "已显示参考答案" if show_ans else "已隐藏参考答案"},
+                "card": build_vocab_checklist_card(session_id, items, show_answers=show_ans)
+            }
+        elif action_type == "show_vocab_full_list" or action_type == "dictate_exit":
             session_id = action_val.get("session_id", "demo")
             session = get_vocab_session(session_id)
             items = session.get("items", []) if session else []
-            return {"card": build_vocab_list_card(session_id, items)}
+            return {"toast": {"type": "info", "content": "已切换为英汉对照清单"}, "card": build_vocab_list_card(session_id, items)}
         elif action_type == "trigger_immediate_extraction":
             sender_id = body.get("open_id") or body.get("user_id") or body.get("open_chat_id", "")
             target_user = action_val.get("user_id") or sender_id

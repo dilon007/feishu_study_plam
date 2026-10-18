@@ -556,8 +556,14 @@ def build_vocab_list_card(session_id: str, items: list[dict], title: str = "课�
                 "actions": [
                     {
                         "tag": "button",
-                        "text": {"tag": "plain_text", "content": "✏️ 校对与修改中文注释"},
+                        "text": {"tag": "plain_text", "content": "📝 生成默写清单"},
                         "type": "primary",
+                        "value": {"action": "generate_dictation_checklist", "session_id": session_id}
+                    },
+                    {
+                        "tag": "button",
+                        "text": {"tag": "plain_text", "content": "✏️ 校对与修改中文释义"},
+                        "type": "default",
                         "multi_url": {
                             "url": workbench_url,
                             "pc_url": workbench_url,
@@ -567,13 +573,7 @@ def build_vocab_list_card(session_id: str, items: list[dict], title: str = "课�
                     },
                     {
                         "tag": "button",
-                        "text": {"tag": "plain_text", "content": "✍️ 开始卡片默写"},
-                        "type": "default",
-                        "value": {"action": "dictate_step", "session_id": session_id, "index": 0, "reveal": False}
-                    },
-                    {
-                        "tag": "button",
-                        "text": {"tag": "plain_text", "content": "🖨️ A4 打印与自测卷"},
+                        "text": {"tag": "plain_text", "content": "🖨️ A4 打印自测卷"},
                         "type": "default",
                         "multi_url": {
                             "url": f"{workbench_url}&tab=print",
@@ -583,6 +583,93 @@ def build_vocab_list_card(session_id: str, items: list[dict], title: str = "课�
                         }
                     }
                 ]
+            }
+        ]
+    }
+
+
+def build_vocab_checklist_card(session_id: str, items: list[dict], show_answers: bool = False) -> dict:
+    """
+    构建中文默写清单卡片（纯中文，带 Todo List 标识）：
+    满足初三学生自我默写自测需求，每个词条前带 Todo List 标识，全中文无英文泄露。
+    """
+    total = len(items)
+    checklist_lines = []
+    
+    for idx, item in enumerate(items, 1):
+        meaning = item.get("meaning", "").strip() or "（请根据课文记忆填空）"
+        phrase = item.get("phrase", "").strip()
+        phonetic = f"`{item.get('phonetic', '')}` " if (item.get("phonetic") and item.get("phonetic") != "-") else ""
+        note = item.get("note", "").strip()
+        note_str = f" · *{note}*" if note else ""
+        
+        if show_answers:
+            checklist_lines.append(f"- [ ] **{idx}.** {meaning}\n      👉 答案：`{phrase}` {phonetic}{note_str}")
+        else:
+            checklist_lines.append(f"- [ ] **{idx}.** {meaning}")
+
+    content_md = "\n\n".join(checklist_lines)
+    workbench_url = f"https://dilonclaw.cloud/suzhou/vocab?id={session_id}"
+
+    action_buttons = []
+    if not show_answers:
+        action_buttons.append({
+            "tag": "button",
+            "text": {"tag": "plain_text", "content": "👀 查看参考答案"},
+            "type": "primary",
+            "value": {"action": "toggle_checklist_answers", "session_id": session_id, "show_answers": True}
+        })
+    else:
+        action_buttons.append({
+            "tag": "button",
+            "text": {"tag": "plain_text", "content": "🙈 隐藏参考答案"},
+            "type": "default",
+            "value": {"action": "toggle_checklist_answers", "session_id": session_id, "show_answers": False}
+        })
+
+    action_buttons.append({
+        "tag": "button",
+        "text": {"tag": "plain_text", "content": "📖 查看英汉对照表"},
+        "type": "default",
+        "value": {"action": "show_vocab_full_list", "session_id": session_id}
+    })
+    action_buttons.append({
+        "tag": "button",
+        "text": {"tag": "plain_text", "content": "🖨️ A4 纸打印"},
+        "type": "default",
+        "multi_url": {
+            "url": f"{workbench_url}&tab=print",
+            "pc_url": f"{workbench_url}&tab=print",
+            "android_url": f"{workbench_url}&tab=print",
+            "ios_url": f"{workbench_url}&tab=print"
+        }
+    })
+
+    return {
+        "config": {"wide_screen_mode": True},
+        "header": {
+            "template": "turquoise" if show_answers else "blue",
+            "title": {
+                "tag": "plain_text",
+                "content": f"📝 课文词汇默写清单 (纯中文自测 · 共 {total} 条)" if not show_answers else f"🎯 默写清单参考答案 (共 {total} 条)"
+            }
+        },
+        "elements": [
+            {
+                "tag": "div",
+                "text": {
+                    "tag": "lark_md",
+                    "content": (
+                        f"🎯 **【纯中文默写自测清单】**\n请在草稿纸或心中默写对应英文短语/整句，每默写完成一条可打勾。默写完毕后可点击下方按钮核对答案：\n\n{content_md}"
+                        if not show_answers else
+                        f"🎯 **【参考答案核对】**\n请仔细核对英文拼写、介词搭配与中考考点：\n\n{content_md}"
+                    )
+                }
+            },
+            {"tag": "hr"},
+            {
+                "tag": "action",
+                "actions": action_buttons
             }
         ]
     }
@@ -737,9 +824,9 @@ def build_vocab_bot_welcome_card() -> dict:
                     },
                     {
                         "tag": "button",
-                        "text": {"tag": "plain_text", "content": "✍️ 立即开始默写"},
+                        "text": {"tag": "plain_text", "content": "📝 默写清单自测"},
                         "type": "default",
-                        "value": {"action": "dictate_step", "session_id": "demo", "index": 0, "reveal": False}
+                        "value": {"action": "generate_dictation_checklist", "session_id": "demo"}
                     },
                     {
                         "tag": "button",
