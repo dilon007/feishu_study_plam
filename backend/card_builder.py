@@ -693,3 +693,71 @@ def build_vocab_dictation_card(session_id: str, items: list[dict], current_index
         ]
     }
 
+def build_vocab_bot_welcome_card() -> dict:
+    """
+    构建专属背单词机器人的首屏欢迎与操作指南卡片
+    """
+    workbench_url = "https://dilonclaw.cloud/suzhou/vocab"
+    return {
+        "config": {"wide_screen_mode": True},
+        "header": {
+            "template": "blue",
+            "title": {"tag": "plain_text", "content": "🇬🇧 苏九背词伴读 · 专属英语默写助手"}
+        },
+        "elements": [
+            {
+                "tag": "div",
+                "text": {
+                    "tag": "lark_md",
+                    "content": (
+                        "👋 **欢迎使用苏州市九年级英语课文背词伴读机器人！**\n\n"
+                        "本助手严格依据**苏州市初三译林牛津版（9A/9B）英语教材考标**，专为初三学生中考词汇通关打造。"
+                    )
+                }
+            },
+            {"tag": "hr"},
+            {
+                "tag": "div",
+                "text": {
+                    "tag": "lark_md",
+                    "content": (
+                        "✨ **四大核心功能使用指南：**\n\n"
+                        "1. 📸 **拍照识别课文划线**：\n"
+                        "   直接在对话框中**发送带有荧光笔高亮、铅笔下划线或手写圈画的课文截图**，AI 秒级提取重点词组并匹配中考释义；\n\n"
+                        "2. ✏️ **英 ➔ 中 在线校对修改**：\n"
+                        "   支持点击进入工作台，自由校对并修改每一条中文注释；\n\n"
+                        "3. ✍️ **飞书卡片逐词默写**：\n"
+                        "   在聊天框中**原地逐词翻页默写自测**（中文提示 ➔ 思考 ➔ 揭晓答案 ➔ 下一词），无需跳转网页；\n\n"
+                        "4. 🖨️ **A4 纸规范打印排版**：\n"
+                        "   一键生成**【课堂自测默写卷】**（左中文右横线）或**【考前背诵清单】**，一键打印练习。"
+                    )
+                }
+            },
+            {"tag": "hr"},
+            {
+                "tag": "action",
+                "actions": [
+                    {
+                        "tag": "button",
+                        "text": {"tag": "plain_text", "content": "📸 查看课文提取示例"},
+                        "type": "primary",
+                        "value": {"action": "vocab_bot_demo"}
+                    },
+                    {
+                        "tag": "button",
+                        "text": {"tag": "plain_text", "content": "✍️ 立即开始默写"},
+                        "type": "default",
+                        "value": {"action": "dictate_step", "session_id": "demo", "index": 0, "reveal": False}
+                    },
+                    {
+                        "tag": "button",
+                        "text": {"tag": "plain_text", "content": "🖨️ 访问打印工作台"},
+                        "type": "default",
+                        "multi_url": {"url": workbench_url, "pc_url": workbench_url}
+                    }
+                ]
+            }
+        ]
+    }
+
+

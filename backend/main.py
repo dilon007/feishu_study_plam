@@ -16,7 +16,8 @@ from card_builder import (
     SUBJECT_METAS, build_menu_card, build_subject_workbench_card,
     build_physics_card, build_chemistry_card, build_word_card,
     build_ancient_card, build_qa_result_card,
-    build_vocab_list_card, build_vocab_dictation_card
+    build_vocab_list_card, build_vocab_dictation_card,
+    build_vocab_bot_welcome_card
 )
 from feishu_client import reply_interactive_card, send_chat_card, download_image_resource
 from llm_provider import (
@@ -30,10 +31,13 @@ from dotenv import load_dotenv
 
 load_dotenv()
 
+VOCAB_APP_ID = os.getenv("FEISHU_VOCAB_APP_ID", "").strip() or os.getenv("FEISHU_APP_ID", "").strip()
+VOCAB_APP_SECRET = os.getenv("FEISHU_VOCAB_APP_SECRET", "").strip() or os.getenv("FEISHU_APP_SECRET", "").strip()
+
 app = FastAPI(
     title="苏九学伴 - 学习助手中台",
-    description="针对苏州市9年级学生的学习助手中台后端 API 与飞书消息机器人引擎",
-    version="1.6.0"
+    description="针对苏州市9年级学生的学习助手中台后端 API 与飞书消息机器人引擎（含独立背单词机器人网关）",
+    version="1.7.0"
 )
 
 # 内存会话管理：记录每位学生当前选定的复习学科（默认为数学 math）
@@ -461,7 +465,222 @@ async def feishu_event_handler(request: Request, background_tasks: BackgroundTas
 
     return {"code": 0, "msg": "success"}
 
+async def process_vocab_bot_im_message_task(event: dict):
+    """
+    专属英语背单词机器人（苏九背词伴读）异步消息处理器：
+    专精课文高亮划线词汇提取、默写卡片推进与中考考标词汇互动。
+    """
+    try:
+        message = event.get("message", {})
+        message_id = message.get("message_id")
+        msg_type = message.get("message_type")
+        chat_id = message.get("chat_id")
+        sender_id = event.get("sender", {}).get("sender_id", {}).get("open_id") or chat_id or "default_user"
+
+        card_to_send = None
+
+        if msg_type == "image":
+            # 专属背词机器人：发截图 100% 直接走英语课文划线词汇识别与提取
+            try:
+                content_obj = json.loads(message.get("content", "{}"))
+                image_key = content_obj.get("image_key", "")
+            except Exception:
+                image_key = ""
+
+            if image_key and message_id:
+                img_bytes = await download_image_resource(
+                    message_id, image_key, 
+                    app_id=VOCAB_APP_ID, app_secret=VOCAB_APP_SECRET
+                )
+                if img_bytes:
+                    vocab_items = await extract_highlighted_vocab_from_image(img_bytes)
+                    if vocab_items:
+                        session = create_vocab_session(sender_id, vocab_items, "课文高亮划线重点词组")
+                        card_to_send = build_vocab_list_card(session["session_id"], session["items"])
+                    else:
+                        card_to_send = {
+                            "config": {"wide_screen_mode": True},
+                            "header": {"template": "orange", "title": {"tag": "plain_text", "content": "⚠️ 课文划线识别提示"}},
+                            "elements": [
+                                {
+                                    "tag": "div",
+                                    "text": {"tag": "lark_md", "content": "未能从截图中检测到明显的荧光笔高亮、下划线或手写划线词组。\n\n💡 **小建议**：请使用彩色荧光笔或铅笔在课本生词/短语下方划线后重新拍照发送，效果最佳！"}
+                                },
+                                {
+                                    "tag": "action",
+                                    "actions": [
+                                        {"tag": "button", "text": {"tag": "plain_text", "content": "📸 查看示例卡片"}, "type": "primary", "value": {"action": "vocab_bot_demo"}},
+                                        {"tag": "button", "text": {"tag": "plain_text", "content": "🔙 返回主导航"}, "type": "default", "value": {"action": "back_to_vocab_menu"}}
+                                    ]
+                                }
+                            ]
+                        }
+                else:
+                    card_to_send = {
+                        "config": {"wide_screen_mode": True},
+                        "header": {"template": "orange", "title": {"tag": "plain_text", "content": "⚠️ 图片读取失败"}},
+                        "elements": [
+                            {"tag": "div", "text": {"tag": "lark_md", "content": "未能成功获取图片资源，请确认该背词机器人应用是否已开通 `im:resource` 权限。"}}
+                        ]
+                    }
+
+        elif msg_type == "text":
+            try:
+                content_obj = json.loads(message.get("content", "{}"))
+                raw_text = content_obj.get("text", "")
+            except Exception:
+                raw_text = message.get("content", "")
+
+            user_query = clean_message_text(raw_text)
+
+            # 意图 1：呼出主导航 / 帮助 / 问候
+            if not user_query or user_query in ["菜单", "menu", "help", "帮助", "开始", "你好", "hi", "hello", "背单词", "背词"]:
+                card_to_send = build_vocab_bot_welcome_card()
+
+            # 意图 2：开始默写 / 练习
+            elif any(k in user_query for k in ["默写", "自测", "练习"]):
+                demo_items = [
+                    {"phrase": "take...seriously", "phonetic": "/teɪk ˈsɪəriəsli/", "meaning": "认真对待；严肃处理", "note": "Unit 1 核心短语"},
+                    {"phrase": "pay attention to", "phonetic": "/peɪ əˈtenʃn tu/", "meaning": "注意；留心", "note": "后接 doing 动名词"},
+                    {"phrase": "generous", "phonetic": "/ˈdʒenərəs/", "meaning": "慷慨的；大方的", "note": "核心形容词"}
+                ]
+                session = create_vocab_session(sender_id, demo_items, "课文高亮划线默写自测")
+                card_to_send = build_vocab_dictation_card(session["session_id"], session["items"], 0, False)
+
+            # 意图 3：打印 / A4
+            elif any(k in user_query for k in ["打印", "a4", "导出", "试卷"]):
+                workbench_url = "https://dilonclaw.cloud/suzhou/vocab?tab=print"
+                card_to_send = {
+                    "config": {"wide_screen_mode": True},
+                    "header": {"template": "blue", "title": {"tag": "plain_text", "content": "🖨️ A4 纸打印排版工作台"}},
+                    "elements": [
+                        {"tag": "div", "text": {"tag": "lark_md", "content": "已为您准备好【苏州市初三英语课文默写卷】与【考前背诵清单】A4 纸排版。\n\n点击下方按钮即可进入专属页面一键打印："}},
+                        {
+                            "tag": "action",
+                            "actions": [
+                                {"tag": "button", "text": {"tag": "plain_text", "content": "🖨️ 打开打印页面"}, "type": "primary", "multi_url": {"url": workbench_url, "pc_url": workbench_url}}
+                            ]
+                        }
+                    ]
+                }
+
+            # 意图 4：查单词 / 查词
+            elif user_query.startswith("查单词") or user_query.startswith("单词") or re.match(r"^[a-zA-Z\s\-]+$", user_query):
+                search_word = re.sub(r"^(查单词|单词|word)\s*", "", user_query, flags=re.IGNORECASE).strip()
+                word_result = query_english_word(search_word)
+                if word_result.get("matched"):
+                    card_to_send = build_word_card(word_result)
+                else:
+                    llm_ans = await generate_suzhou_answer(f"初三英语考纲单词与搭配：{search_word}", "九年级英语")
+                    card_to_send = build_qa_result_card(f"单词：{search_word}", llm_ans or "词库正在收录中", "九年级英语", "english")
+
+            # 意图 5：普通提问或建议
+            else:
+                card_to_send = {
+                    "config": {"wide_screen_mode": True},
+                    "header": {"template": "blue", "title": {"tag": "plain_text", "content": "🇬🇧 苏九背词伴读 · 专属提示"}},
+                    "elements": [
+                        {
+                            "tag": "div",
+                            "text": {"tag": "lark_md", "content": f"收到您的消息：`{user_query}`\n\n📸 **想要背单词/默写？** 请直接将课本中带有荧光笔划线或手写标记的照片发送给我，我将自动提取并生成默写卡片！"}
+                        },
+                        {
+                            "tag": "action",
+                            "actions": [
+                                {"tag": "button", "text": {"tag": "plain_text", "content": "🔙 查看使用导航"}, "type": "default", "value": {"action": "back_to_vocab_menu"}}
+                            ]
+                        }
+                    ]
+                }
+
+        if card_to_send and message_id:
+            await reply_interactive_card(
+                message_id, card_to_send, 
+                app_id=VOCAB_APP_ID, app_secret=VOCAB_APP_SECRET
+            )
+
+    except Exception as e:
+        print(f"[Vocab Bot Async Task Error] 异常: {e}")
+
+@app.post("/api/feishu/vocab_event")
+@app.post("/api/feishu/vocab/event")
+async def feishu_vocab_event_handler(request: Request, background_tasks: BackgroundTasks):
+    """
+    专属英语背单词机器人 Webhook 网关端点：
+    1. URL Verification 安全握手
+    2. 卡片 Action 原地刷新交互 (dictate_step, dictate_exit, vocab_bot_demo, back_to_vocab_menu)
+    3. IM 接收消息事件 (幂等去重 + BackgroundTasks 异步处理，避免飞书超时重试)
+    """
+    try:
+        body = await request.json()
+    except Exception:
+        return {"code": 0, "msg": "invalid json"}
+
+    # 1. 飞书 URL 校验握手
+    if body.get("type") == "url_verification":
+        return {"challenge": body.get("challenge", "")}
+
+    # 2. 飞书交互式卡片点击回传 (card.action.trigger)
+    if "action" in body and ("open_message_id" in body or "open_id" in body):
+        action_val = body.get("action", {}).get("value", {})
+        action_type = action_val.get("action")
+
+        if action_type == "back_to_vocab_menu":
+            return {"card": build_vocab_bot_welcome_card()}
+        elif action_type == "vocab_bot_demo":
+            demo_items = [
+                {"phrase": "take...seriously", "phonetic": "/teɪk ˈsɪəriəsli/", "meaning": "认真对待；严肃处理", "note": "Unit 1 核心短语"},
+                {"phrase": "pay attention to", "phonetic": "/peɪ əˈtenʃn tu/", "meaning": "注意；留心", "note": "后接 doing"},
+                {"phrase": "generous", "phonetic": "/ˈdʒenərəs/", "meaning": "慷慨的；大方的", "note": "核心形容词"}
+            ]
+            session = create_vocab_session("demo_user", demo_items, "课文高亮划线提取示例")
+            return {"card": build_vocab_list_card(session["session_id"], session["items"])}
+        elif action_type == "dictate_step":
+            session_id = action_val.get("session_id", "demo")
+            idx = action_val.get("index", 0)
+            reveal = action_val.get("reveal", False)
+            session = get_vocab_session(session_id)
+            if not session:
+                demo_items = [
+                    {"phrase": "take...seriously", "phonetic": "/teɪk ˈsɪəriəsli/", "meaning": "认真对待；严肃处理", "note": "Unit 1 核心短语"},
+                    {"phrase": "pay attention to", "phonetic": "/peɪ əˈtenʃn tu/", "meaning": "注意；留心", "note": "后接 doing"}
+                ]
+                session = create_vocab_session("demo_user", demo_items, "课文划线默写")
+            items = session.get("items", [])
+            return {"card": build_vocab_dictation_card(session["session_id"], items, idx, reveal)}
+        elif action_type == "dictate_exit":
+            session_id = action_val.get("session_id", "demo")
+            session = get_vocab_session(session_id)
+            items = session.get("items", []) if session else []
+            return {"card": build_vocab_list_card(session_id, items)}
+        
+        return {"toast": {"type": "info", "content": "功能已就绪"}}
+
+    # 3. 飞书 v2.0 事件订阅 (im.message.receive_v1)
+    header = body.get("header", {})
+    event_type = header.get("event_type")
+
+    if event_type == "im.message.receive_v1":
+        event = body.get("event", {})
+        sender_type = event.get("sender", {}).get("sender_type")
+        if sender_type == "app":
+            return {"code": 0, "msg": "ignore bot message"}
+
+        event_id = header.get("event_id", "")
+        message = event.get("message", {})
+        message_id = message.get("message_id", "")
+
+        if check_and_mark_event_processed(event_id, message_id):
+            print(f"[Vocab Bot Deduplicate] 拦截到重复事件: event_id={event_id}, message_id={message_id}")
+            return {"code": 0, "msg": "duplicate event ignored"}
+
+        background_tasks.add_task(process_vocab_bot_im_message_task, event)
+        return {"code": 0, "msg": "success"}
+
+    return {"code": 0, "msg": "success"}
+
 @app.get("/api/system/model_status")
+
 async def get_model_status():
     """查看当前激活的大模型配置与系统预设的全部支持厂商"""
     return {
@@ -532,7 +751,12 @@ async def test_dictate_card(index: int = 0, reveal: bool = False):
     session = create_vocab_session("test_user", demo_items, "课文重点划线词组")
     return build_vocab_dictation_card(session["session_id"], session["items"], index, reveal)
 
+@app.get("/api/test/vocab_welcome_card")
+async def test_vocab_welcome_card():
+    """测试获取专属背单词机器人欢迎卡片 JSON"""
+    return build_vocab_bot_welcome_card()
 
 if __name__ == "__main__":
     import uvicorn
     uvicorn.run("main:app", host="0.0.0.0", port=8000, reload=True)
+
