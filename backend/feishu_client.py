@@ -19,6 +19,9 @@ DEFAULT_APP_SECRET = os.getenv("FEISHU_APP_SECRET", "")
 VOCAB_APP_ID = os.getenv("FEISHU_VOCAB_APP_ID", "") or DEFAULT_APP_ID
 VOCAB_APP_SECRET = os.getenv("FEISHU_VOCAB_APP_SECRET", "") or DEFAULT_APP_SECRET
 
+STEM_APP_ID = os.getenv("FEISHU_STEM_APP_ID", "") or DEFAULT_APP_ID
+STEM_APP_SECRET = os.getenv("FEISHU_STEM_APP_SECRET", "") or DEFAULT_APP_SECRET
+
 # 按 app_id 隔离存储各机器人的 token 缓存
 _token_caches: Dict[str, dict] = {}
 

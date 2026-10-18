@@ -59,7 +59,10 @@
   * **服务器**：腾讯云海外独立节点（Ubuntu 24.04 LTS，韩国首尔，IP: `119.28.155.50`），网络直连 Google Gemini API，延迟低于 50ms。
   * **反向代理**：Caddy 自动 HTTPS 证书续期，外网域名为 `https://dilonclaw.cloud`。
   * **进程管理**：systemd 服务保活（`feishu-suzhou-study.service`），虚拟环境运行在 `/opt/feishu_study_plam/venv`。
-  * **飞书事件回调地址**：`https://dilonclaw.cloud/suzhou/api/feishu/event`
+  * **飞书事件回调地址集群**：
+    - ① **全科综合中台机器人**：`https://dilonclaw.cloud/suzhou/api/feishu/event`
+    - ② **专属英语背词伴读机器人**：`https://dilonclaw.cloud/suzhou/api/feishu/vocab_event`
+    - ③ **专属数理化拍照搜题机器人**：`https://dilonclaw.cloud/suzhou/api/feishu/stem_event`
   * **模型与系统监控**：`https://dilonclaw.cloud/suzhou/api/system/model_status`
 
 ---
@@ -152,10 +155,7 @@ feishu_study_plam/
 | 2026-10-18 | Feature | 增加接收图片后【⚡ 立即识别生成】交互按钮：学生上传截图后可选择等待 30 秒自动聚合，也可随时主动点击按钮提前结束倒计时，卡片就地刷新为“正在识别中”，并在后台毫秒级启动多模态提取并回复最终词汇卡 | `backend/card_builder.py`, `backend/vocab_aggregator.py`, `backend/main.py`, `Agents.md` |
 | 2026-10-18 | Feature | 升级默写模式为【纯中文 Todo List 默写清单】：将逐词翻页默写重构为一键生成纯中文默写自测清单，每条附带 Todo List 标识（- [ ]），无英文泄露防作弊；采用就地刷新与异步新卡片双通道投递彻底杜绝无响应，并提供答案核对切换与英汉对照回退 | `backend/card_builder.py`, `backend/main.py`, `Agents.md` |
 | 2026-10-18 | Feature | 优化默写清单生成体验为【直接在对话框中回复】：新增 send_card_to_dialog 多策略投递保障，点击“生成默写清单”或在会话中输入“默写清单/列表”时，不再覆盖原词汇卡，而是直接在对话框中回复全新的纯中文 Todo List 默写自测卡，支持记忆用户最近拍照会话 | `backend/feishu_client.py`, `backend/vocab_service.py`, `backend/main.py`, `Agents.md` |
-
-
-
-
+| 2026-10-18 | Feature | 单独隔离并支持【专属数理化拍照搜题机器人（苏九数理化搜题伴读）】：新增 `FEISHU_STEM_APP_ID`/`SECRET` 凭证与专属事件网关 `/api/feishu/stem_event`，专精初三数学（苏科版）、物理（苏科版）、化学（初三化学）试卷拍照识题、苏州考标规范步骤推导与中考评分踩分点剖析，杜绝超纲步骤 | `backend/feishu_client.py`, `backend/card_builder.py`, `backend/main.py`, `Agents.md` |
 
 ---
 
@@ -166,7 +166,8 @@ feishu_study_plam/
 - [x] 题目截图拍照搜题多模态图文解析
 - [x] 先选科目再答疑专属工作台
 - [x] 英语课文划线生词短语提取、英->中确认修改、逐词翻页默写与 A4 纸打印导出
-- [x] 独立配置专属英语背单词机器人（双机器人架构：全科综合答疑 + 英语划线默写伴读）
+- [x] 独立配置专属英语背单词机器人（苏九背词伴读，网关 /api/feishu/vocab_event）
+- [x] 独立配置专属数理化拍照搜题机器人（苏九数理化搜题伴读，专精数理化试卷拍照识题与苏州考标解题，网关 /api/feishu/stem_event）
 - [ ] 接入国内平替大模型接口（DeepSeek R1 / 通义千问等备选）
 - [ ] 补充苏科版数学/物理章节知识点知识库 (RAG 向量切片构建)
 - [ ] 扩充 `guardrail.py` 中的高中超纲禁忌词库与正向初中考标词库

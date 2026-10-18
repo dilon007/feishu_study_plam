@@ -19,11 +19,13 @@ from card_builder import (
     build_vocab_list_card, build_vocab_dictation_card,
     build_vocab_checklist_card,
     build_vocab_bot_welcome_card, build_image_batch_received_card,
-    build_image_processing_card
+    build_image_processing_card,
+    build_stem_bot_welcome_card, build_stem_qa_result_card
 )
 from feishu_client import (
     reply_interactive_card, send_chat_card, send_user_card,
-    send_card_to_dialog, download_image_resource
+    send_card_to_dialog, download_image_resource,
+    VOCAB_APP_ID, VOCAB_APP_SECRET, STEM_APP_ID, STEM_APP_SECRET
 )
 from llm_provider import (
     generate_suzhou_answer, generate_suzhou_vision_answer, 
@@ -43,18 +45,24 @@ from dotenv import load_dotenv
 
 load_dotenv()
 
+# 独立机器人凭证配置（支持多机器人隔离发信与资源读取）
 VOCAB_APP_ID = os.getenv("FEISHU_VOCAB_APP_ID", "").strip() or os.getenv("FEISHU_APP_ID", "").strip()
 VOCAB_APP_SECRET = os.getenv("FEISHU_VOCAB_APP_SECRET", "").strip() or os.getenv("FEISHU_APP_SECRET", "").strip()
 
+STEM_APP_ID = os.getenv("FEISHU_STEM_APP_ID", "").strip() or os.getenv("FEISHU_APP_ID", "").strip()
+STEM_APP_SECRET = os.getenv("FEISHU_STEM_APP_SECRET", "").strip() or os.getenv("FEISHU_APP_SECRET", "").strip()
+
 app = FastAPI(
     title="苏九学伴 - 学习助手中台",
-    description="针对苏州市9年级学生的学习助手中台后端 API 与飞书消息机器人引擎（含独立背单词机器人网关）",
-    version="1.7.0"
+    description="针对苏州市9年级学生的学习助手中台后端 API 与飞书多机器人集群（含全科中台、独立英语背词伴读机器人与独立数理化拍照搜题机器人）",
+    version="1.8.0"
 )
 
-# 内存会话管理：记录每位学生当前选定的复习学科（默认为数学 math）
-# 格式：{ "open_id_or_chat_id": "physics" | "chemistry" | "math" | "english" | "chinese" | "politics" }
+# 内存会话管理：全科综合机器人当前学科
 user_active_subjects: dict[str, str] = {}
+
+# 专属数理化拍照搜题机器人：记录每位学生的偏好学科（默认为数学 math，可选 physics 或 chemistry）
+stem_user_active_subjects: dict[str, str] = {}
 
 # 飞书事件幂等去重缓存：记录最近已处理的 event_id 和 message_id
 # 杜绝飞书 Webhook 3秒超时重试导致的大模型重复运算与重复推送卡片
@@ -771,6 +779,255 @@ async def feishu_vocab_event_handler(request: Request, background_tasks: Backgro
 
     return {"code": 0, "msg": "success"}
 
+# ==============================================================================
+# 专属数理化拍照搜题机器人（苏九数理化搜题伴读）
+# 专精苏州市初三数学（苏科版）、物理（苏科版）、化学（初三化学/沪教版）拍照搜题
+# ==============================================================================
+
+async def process_stem_bot_im_message_task(event: dict):
+    """
+    专属数理化拍照搜题机器人（苏九数理化搜题伴读）异步消息处理器：
+    专精初三数学、物理、化学题目拍照识别、分步推导与中考评分踩分点剖析。
+    """
+    try:
+        message = event.get("message", {})
+        message_id = message.get("message_id")
+        msg_type = message.get("message_type")
+        chat_id = message.get("chat_id")
+        sender_id = event.get("sender", {}).get("sender_id", {}).get("open_id") or chat_id or "default_user"
+        active_subj = stem_user_active_subjects.get(sender_id, "math")
+        subj_info = SUBJECT_METAS.get(active_subj, SUBJECT_METAS["math"])
+
+        card_to_send = None
+
+        if msg_type == "image":
+            # 专属数理化搜题机器人：发截图 100% 专精数理化试卷与习题拍照解题
+            try:
+                content_obj = json.loads(message.get("content", "{}"))
+                image_key = content_obj.get("image_key", "")
+            except Exception:
+                image_key = ""
+
+            if image_key and message_id:
+                img_bytes = await download_image_resource(
+                    message_id, image_key,
+                    app_id=STEM_APP_ID, app_secret=STEM_APP_SECRET
+                )
+                if img_bytes:
+                    prompt_hint = (
+                        f"学生当前偏好学科为【{subj_info['name']} ({subj_info['book']})】。"
+                        "请先仔细观察题目截图，若题目属于数学、物理或化学，请自动按苏州市九年级（初三）对应学科中考考标进行规范分步推导。"
+                        "格式必须包含：1.【考点定位】；2.【苏科版/初三标准解题步骤】；3.【苏州中考易错点与踩分提醒】。"
+                        "严格杜绝使用高中或大学超纲知识（如禁止导数、向量、高中电离平衡等）！"
+                    )
+                    vision_answer = await generate_suzhou_vision_answer(img_bytes, user_prompt=prompt_hint)
+                    out_check = check_for_out_of_bounds(vision_answer)
+                    if out_check["is_safe"]:
+                        card_to_send = build_stem_qa_result_card(
+                            "📸 学生数理化试卷/习题拍照截图",
+                            vision_answer,
+                            f"{subj_info['name']} 图像解析",
+                            active_subj
+                        )
+                    else:
+                        card_to_send = {
+                            "config": {"wide_screen_mode": True},
+                            "header": {"template": "red", "title": {"tag": "plain_text", "content": "🛡️ 防超纲安全拦截"}},
+                            "elements": [
+                                {
+                                    "tag": "div",
+                                    "text": {"tag": "lark_md", "content": f"**检测到解题推导包含高中超纲内容**：`{out_check['violations']}`。\n\n苏九学伴严格遵循苏州市初中学业水平考试要求，初中阶段不使用高中推导与概念。请确认题目是否为初三阶段内容。"}
+                                },
+                                {
+                                    "tag": "action",
+                                    "actions": [
+                                        {"tag": "button", "text": {"tag": "plain_text", "content": "🔙 返回搜题工作台"}, "type": "default", "value": {"action": "back_to_stem_menu"}}
+                                    ]
+                                }
+                            ]
+                        }
+                else:
+                    card_to_send = {
+                        "config": {"wide_screen_mode": True},
+                        "header": {"template": "orange", "title": {"tag": "plain_text", "content": "⚠️ 图片读取提示"}},
+                        "elements": [
+                            {"tag": "div", "text": {"tag": "lark_md", "content": "未能读取到截图。请检查该数理化搜题机器人应用是否已勾选开通 **`im:resource`（获取与上传图片或文件资源）** 权限。"}}
+                        ]
+                    }
+
+        elif msg_type == "text":
+            try:
+                content_obj = json.loads(message.get("content", "{}"))
+                raw_text = content_obj.get("text", "")
+            except Exception:
+                raw_text = message.get("content", "")
+
+            user_query = clean_message_text(raw_text)
+
+            # 意图 1：呼出导航 / 帮助 / 问候
+            if not user_query or user_query in ["菜单", "menu", "help", "帮助", "开始", "你好", "hi", "hello", "搜题", "拍照搜题"]:
+                card_to_send = build_stem_bot_welcome_card(active_subj)
+
+            # 意图 2：切换数理化学科偏好（数学、物理、化学）
+            elif any(user_query == k or user_query == f"切换{k}" or user_query == f"换{k}" or user_query == f"选{k}" for k in ["数学", "物理", "化学"]):
+                subj_map = {"数学": "math", "物理": "physics", "化学": "chemistry"}
+                for k, v in subj_map.items():
+                    if k in user_query:
+                        stem_user_active_subjects[sender_id] = v
+                        card_to_send = build_stem_bot_welcome_card(v)
+                        break
+
+            # 意图 3：文字直接输入数理化题目进行答疑
+            else:
+                guard_check = check_for_out_of_bounds(user_query)
+                if not guard_check["is_safe"]:
+                    card_to_send = {
+                        "config": {"wide_screen_mode": True},
+                        "header": {"template": "red", "title": {"tag": "plain_text", "content": "🛡️ 苏州9年级考纲防超纲拦截"}},
+                        "elements": [
+                            {"tag": "div", "text": {"tag": "lark_md", "content": f"**抱歉，检测到提问包含高中超纲内容**：`{guard_check['violations']}`。\n\n本机器人严格遵循苏州市初中学业水平考试考标，初中阶段不使用高中推导。请尝试以初中课本知识提问。"}}
+                        ]
+                    }
+                else:
+                    # 优先快速命中本地知识库（如物理/化学基础概念）
+                    if active_subj == "physics":
+                        p_res = query_physics_concept(user_query)
+                        if p_res.get("matched"):
+                            card_to_send = build_physics_card(p_res["data"])
+                    elif active_subj == "chemistry":
+                        c_res = query_chemistry_concept(user_query)
+                        if c_res.get("matched"):
+                            card_to_send = build_chemistry_card(c_res["data"])
+
+                    if not card_to_send:
+                        llm_answer = await generate_suzhou_answer(user_query, f"{subj_info['name']} ({subj_info['book']})")
+                        if llm_answer:
+                            out_check = check_for_out_of_bounds(llm_answer)
+                            if out_check["is_safe"]:
+                                card_to_send = build_stem_qa_result_card(user_query, llm_answer, subj_info["name"], active_subj)
+                            else:
+                                card_to_send = {
+                                    "config": {"wide_screen_mode": True},
+                                    "header": {"template": "red", "title": {"tag": "plain_text", "content": "🛡️ 答题输出防超纲拦截"}},
+                                    "elements": [
+                                        {"tag": "div", "text": {"tag": "lark_md", "content": f"生成内容包含高中超纲内容：`{out_check['violations']}`，已熔断保护。请换个问法。"}}
+                                    ]
+                                }
+                        else:
+                            card_to_send = build_stem_bot_welcome_card(active_subj)
+
+        if card_to_send and message_id:
+            await reply_interactive_card(
+                message_id, card_to_send,
+                app_id=STEM_APP_ID, app_secret=STEM_APP_SECRET
+            )
+
+    except Exception as e:
+        print(f"[STEM Bot Async Task Error] 异常: {e}")
+
+@app.post("/api/feishu/stem_event")
+@app.post("/api/feishu/stem/event")
+async def feishu_stem_event_handler(request: Request, background_tasks: BackgroundTasks):
+    """
+    专属数理化拍照搜题机器人 Webhook 网关端点：
+    1. URL Verification 安全握手
+    2. 卡片 Action 原地刷新交互 (stem_select_subject, stem_demo_question, back_to_stem_menu)
+    3. IM 接收消息事件 (幂等去重 + BackgroundTasks 异步处理，避免飞书超时重试)
+    """
+    try:
+        body = await request.json()
+    except Exception:
+        return {"code": 0, "msg": "invalid json"}
+
+    # 1. 飞书 URL 校验握手
+    if body.get("type") == "url_verification":
+        return {"challenge": body.get("challenge", "")}
+
+    # 2. 飞书交互式卡片点击回传 (card.action.trigger)
+    if "action" in body and ("open_message_id" in body or "open_id" in body):
+        action_val = body.get("action", {}).get("value", {})
+        action_type = action_val.get("action")
+        sender_id = body.get("open_id") or body.get("user_id") or body.get("open_chat_id", "")
+
+        if action_type == "back_to_stem_menu":
+            cur_subj = stem_user_active_subjects.get(sender_id, "math")
+            return {"card": build_stem_bot_welcome_card(cur_subj)}
+
+        elif action_type == "stem_select_subject":
+            subj = action_val.get("subject", "math")
+            if sender_id:
+                stem_user_active_subjects[sender_id] = subj
+            subj_name = SUBJECT_METAS.get(subj, {}).get("name", subj)
+            return {
+                "toast": {"type": "success", "content": f"已锁定【{subj_name}】考标！现在发送照片即可精准搜题。"},
+                "card": build_stem_bot_welcome_card(subj)
+            }
+
+        elif action_type == "stem_demo_question":
+            subj = action_val.get("subject", "math")
+            demo_q_map = {
+                "math": (
+                    "如图，在 Rt△ABC 中，∠C=90°，AC=6，BC=8，以 AC 为直径作 ⊙O，求过点 B 的切线长及弦长关系。",
+                    "【考点定位】苏科版九年级数学下册·圆与切线的性质、勾股定理与相似三角形。\n\n"
+                    "【苏科版标准解题步骤】\n"
+                    "1. 连结圆心 O 与切点 D，根据切线性质定理得 OD ⊥ BD；\n"
+                    "2. 在 Rt△ABC 中，由勾股定理求得 AB = √(6² + 8²) = 10；\n"
+                    "3. ⊙O 半径 r = AC / 2 = 3，OB = √(OC² + BC²) = √(3² + 8²) = √73；\n"
+                    "4. 在 Rt△ODB 中，切线长 BD = √(OB² - OD²) = √(73 - 9) = 8。\n\n"
+                    "【中考踩分点提醒】作辅助线时务必明确标注‘连结 OD’，切线垂直必须写明‘切线性质定理’，不跳步。"
+                ),
+                "physics": (
+                    "在如图所示的动态电路中，电源电压恒为 6V，定值电阻 R1=10Ω，滑动变阻器 R2 最大阻值为 20Ω，当滑片 P 移动时求电流表与电压表示数变化范围。",
+                    "【考点定位】苏科版九年级物理下册·第十四章 欧姆定律与动态电路分析。\n\n"
+                    "【苏科版标准解题步骤】\n"
+                    "1. 分析电路连接方式：定值电阻 R1 与滑动变阻器 R2 串联；电压表测 R2 两端电压，电流表测串联电路电流；\n"
+                    "2. 当滑片 P 移至最左端 (R2=0) 时：电路中总电阻最小 Rmin = R1 = 10Ω，此时电流最大 Imax = U / R1 = 6V / 10Ω = 0.6A；电压表示数 U2min = 0V；\n"
+                    "3. 当滑片 P 移至最右端 (R2=20Ω) 时：电路总电阻最大 Rmax = R1 + R2 = 30Ω，此时电流最小 Imin = U / Rmax = 6V / 30Ω = 0.2A；电压表示数最大 U2max = Imin * R2 = 0.2A * 20Ω = 4V；\n"
+                    "4. 综上：电流表示数变化范围为 0.2A ~ 0.6A，电压表示数变化范围为 0V ~ 4V。\n\n"
+                    "【中考踩分点提醒】必须写明各电表所测对象，计算极值时必须交代滑片具体位置及理由，写清单位。"
+                ),
+                "chemistry": (
+                    "某白色固体可能含有 CaCO3、Na2CO3、BaCl2、Na2SO4 中的一种或几种，加水溶解后产生白色沉淀，加入足量稀硝酸沉淀部分溶解并产生无色气体。推断原固体组成。",
+                    "【考点定位】初三化学下册·酸碱盐物质推断与离子共存。\n\n"
+                    "【标准推断推导步骤】\n"
+                    "1. 加水产生沉淀：可能为 CaCO3，或 Na2CO3 与 BaCl2 反应生成的 BaCO3，或 Na2SO4 与 BaCl2 反应生成的 BaSO4；\n"
+                    "2. 加入足量稀硝酸沉淀‘部分溶解’：\n"
+                    "   • 溶解并有气体产生的沉淀必为碳酸盐（生成 CO2），说明混合物中必含碳酸根相关成分；\n"
+                    "   • 不溶于稀硝酸的沉淀必为 BaSO4，由此反推混合物中必同时含有 BaCl2 和 Na2SO4！\n"
+                    "3. 产生气体证明必含 Na2CO3 或 CaCO3；若混合物中无 CaCO3 则 Na2CO3 与 BaCl2 反应产生 BaCO3，二者溶解与不溶共存。\n"
+                    "4. 结论：原混合物中一定含有 BaCl2、Na2SO4，至少含有 Na2CO3 或 CaCO3 中的一种。\n\n"
+                    "【中考踩分点提醒】硫酸钡 BaSO4 不溶于稀硝酸是推断的关键题眼，写化学式时切勿漏写下标。"
+                )
+            }
+            demo_tuple = demo_q_map.get(subj, demo_q_map["math"])
+            demo_card = build_stem_qa_result_card(demo_tuple[0], demo_tuple[1], SUBJECT_METAS.get(subj, {}).get("name", "数理化"), subj)
+            return {"card": demo_card}
+
+        return {"toast": {"type": "info", "content": "功能已就绪"}}
+
+    # 3. 飞书 v2.0 事件订阅 (im.message.receive_v1)
+    header = body.get("header", {})
+    event_type = header.get("event_type")
+
+    if event_type == "im.message.receive_v1":
+        event = body.get("event", {})
+        sender_type = event.get("sender", {}).get("sender_type")
+        if sender_type == "app":
+            return {"code": 0, "msg": "ignore bot message"}
+
+        event_id = header.get("event_id", "")
+        message = event.get("message", {})
+        message_id = message.get("message_id", "")
+
+        if check_and_mark_event_processed(event_id, message_id):
+            print(f"[STEM Bot Deduplicate] 拦截到重复事件: event_id={event_id}, message_id={message_id}")
+            return {"code": 0, "msg": "duplicate event ignored"}
+
+        background_tasks.add_task(process_stem_bot_im_message_task, event)
+        return {"code": 0, "msg": "success"}
+
+    return {"code": 0, "msg": "success"}
+
 @app.get("/api/system/model_status")
 
 async def get_model_status():
@@ -847,6 +1104,11 @@ async def test_dictate_card(index: int = 0, reveal: bool = False):
 async def test_vocab_welcome_card():
     """测试获取专属背单词机器人欢迎卡片 JSON"""
     return build_vocab_bot_welcome_card()
+
+@app.get("/api/test/stem_welcome_card")
+async def test_stem_welcome_card(subject: str = "math"):
+    """测试获取专属数理化拍照搜题机器人欢迎卡片 JSON"""
+    return build_stem_bot_welcome_card(subject)
 
 if __name__ == "__main__":
     import uvicorn

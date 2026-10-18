@@ -904,5 +904,176 @@ def build_image_processing_card(img_count: int = 1) -> dict:
         ]
     }
 
+def build_stem_bot_welcome_card(active_subject: str = "math") -> dict:
+    """
+    构建专属数理化拍照搜题机器人（苏九数理化搜题伴读）的首屏欢迎与学科选择卡片
+    专精苏州市初三数学、物理、化学拍照识题与苏州中考考标分步规范解答
+    """
+    subj_name_map = {
+        "math": "📐 数学 (苏科版)",
+        "physics": "⚡ 物理 (苏科版)",
+        "chemistry": "⚗️ 化学 (沪教版/初三化学)"
+    }
+    current_name = subj_name_map.get(active_subject, "📐 数学 (苏科版)")
+
+    return {
+        "config": {"wide_screen_mode": True},
+        "header": {
+            "template": "indigo",
+            "title": {"tag": "plain_text", "content": "📐 苏九数理化 · 拍照搜题伴读机器人"}
+        },
+        "elements": [
+            {
+                "tag": "div",
+                "text": {
+                    "tag": "lark_md",
+                    "content": (
+                        "👋 **欢迎使用苏州市九年级数理化专属拍照搜题机器人！**\n\n"
+                        "本助手由**苏九学伴团队**专为苏州市初三学生定制，专注于**数理化习题拍照识别、规范步骤推导与中考评分踩分点剖析**，杜绝超纲步骤。\n\n"
+                        f"📌 **当前偏好学科**：`{current_name}`"
+                    )
+                }
+            },
+            {"tag": "hr"},
+            {
+                "tag": "div",
+                "text": {
+                    "tag": "lark_md",
+                    "content": (
+                        "🎯 **对齐苏州市初三官方教材与考标：**\n"
+                        "• **📐 数学（苏科版）**：圆与辅助线、二次函数极值/动点问题、相似三角形判定与性质；\n"
+                        "• **⚡ 物理（苏科版）**：动态电路欧姆定律计算、电功率极值、浮力压强、滑轮机械效率；\n"
+                        "• **⚗️ 化学（初三化学）**：酸碱盐复分解反应、气体制取与干燥净化、常见物质转化推断题。\n\n"
+                        "📸 **使用方法**：\n"
+                        "直接在聊天框**发送试卷、错题本或练习题的清晰照片/截图**，多模态 AI 秒级解析并按中考规范分步给出踩分步骤！"
+                    )
+                }
+            },
+            {"tag": "hr"},
+            {
+                "tag": "action",
+                "actions": [
+                    {
+                        "tag": "button",
+                        "text": {"tag": "plain_text", "content": "📐 数学工作台"},
+                        "type": "primary" if active_subject == "math" else "default",
+                        "value": {"action": "stem_select_subject", "subject": "math"}
+                    },
+                    {
+                        "tag": "button",
+                        "text": {"tag": "plain_text", "content": "⚡ 物理工作台"},
+                        "type": "primary" if active_subject == "physics" else "default",
+                        "value": {"action": "stem_select_subject", "subject": "physics"}
+                    },
+                    {
+                        "tag": "button",
+                        "text": {"tag": "plain_text", "content": "⚗️ 化学工作台"},
+                        "type": "primary" if active_subject == "chemistry" else "default",
+                        "value": {"action": "stem_select_subject", "subject": "chemistry"}
+                    }
+                ]
+            },
+            {
+                "tag": "action",
+                "actions": [
+                    {
+                        "tag": "button",
+                        "text": {"tag": "plain_text", "content": "🔍 查看数理化中考解题范例"},
+                        "type": "default",
+                        "value": {"action": "stem_demo_question", "subject": active_subject}
+                    }
+                ]
+            },
+            {
+                "tag": "note",
+                "elements": [
+                    {
+                        "tag": "plain_text",
+                        "content": "💡 提示：拍照时请尽量让题目文字、几何图形或电路图清晰居中，解答效果更佳！"
+                    }
+                ]
+            }
+        ]
+    }
+
+def build_stem_qa_result_card(title: str, content: str, subject_name: str, subject_key: str = "math") -> dict:
+    """
+    构建数理化搜题专属问答结果卡片
+    """
+    header_color_map = {
+        "math": "blue",
+        "physics": "indigo",
+        "chemistry": "carmine"
+    }
+    color = header_color_map.get(subject_key, "indigo")
+
+    return {
+        "config": {"wide_screen_mode": True},
+        "header": {
+            "template": color,
+            "title": {
+                "tag": "plain_text",
+                "content": f"📐 苏九数理化搜题 · {subject_name}规范解析"
+            }
+        },
+        "elements": [
+            {
+                "tag": "div",
+                "text": {
+                    "tag": "lark_md",
+                    "content": f"📋 **题目与已知**：\n{title}"
+                }
+            },
+            {"tag": "hr"},
+            {
+                "tag": "div",
+                "text": {
+                    "tag": "lark_md",
+                    "content": content
+                }
+            },
+            {"tag": "hr"},
+            {
+                "tag": "action",
+                "actions": [
+                    {
+                        "tag": "button",
+                        "text": {"tag": "plain_text", "content": "🔄 更换学科"},
+                        "type": "default",
+                        "value": {"action": "back_to_stem_menu"}
+                    },
+                    {
+                        "tag": "button",
+                        "text": {"tag": "plain_text", "content": "📐 数学"},
+                        "type": "default",
+                        "value": {"action": "stem_select_subject", "subject": "math"}
+                    },
+                    {
+                        "tag": "button",
+                        "text": {"tag": "plain_text", "content": "⚡ 物理"},
+                        "type": "default",
+                        "value": {"action": "stem_select_subject", "subject": "physics"}
+                    },
+                    {
+                        "tag": "button",
+                        "text": {"tag": "plain_text", "content": "⚗️ 化学"},
+                        "type": "default",
+                        "value": {"action": "stem_select_subject", "subject": "chemistry"}
+                    }
+                ]
+            },
+            {
+                "tag": "note",
+                "elements": [
+                    {
+                        "tag": "plain_text",
+                        "content": "📸 遇到新题目？直接发送试卷截图即可继续秒级搜题！"
+                    }
+                ]
+            }
+        ]
+    }
+
+
 
 
