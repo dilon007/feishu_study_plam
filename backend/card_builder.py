@@ -526,17 +526,15 @@ def build_vocab_list_card(session_id: str, items: list[dict], title: str = "课�
     包含：词汇表格预览、在线校对修改入口、卡片逐词默写自测入口、A4 纸打印排版入口
     """
     vocab_lines = []
-    for idx, item in enumerate(items[:10], 1):
+    for idx, item in enumerate(items, 1):
         phrase = item.get("phrase", "")
-        phonetic = f"`{item.get('phonetic', '')}`" if item.get('phonetic') else ""
+        phonetic = f"`{item.get('phonetic', '')}` " if (item.get("phonetic") and item.get("phonetic") != "-") else ""
         meaning = item.get("meaning", "")
-        vocab_lines.append(f"**{idx}. {phrase}** {phonetic} —— *{meaning}*")
-
-    if len(items) > 10:
-        vocab_lines.append(f"*... 及其他共 {len(items)} 个划线词条，可在工作台中完整查看*")
+        vocab_lines.append(f"**{idx}. {phrase}** {phonetic}—— *{meaning}*")
 
     list_md = "\n".join(vocab_lines)
     workbench_url = f"https://dilonclaw.cloud/suzhou/vocab?id={session_id}"
+
 
     return {
         "config": {"wide_screen_mode": True},
