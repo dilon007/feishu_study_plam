@@ -528,9 +528,8 @@ def build_vocab_list_card(session_id: str, items: list[dict], title: str = "课�
     vocab_lines = []
     for idx, item in enumerate(items, 1):
         phrase = item.get("phrase", "")
-        phonetic = f"`{item.get('phonetic', '')}` " if (item.get("phonetic") and item.get("phonetic") != "-") else ""
         meaning = item.get("meaning", "")
-        vocab_lines.append(f"**{idx}. {phrase}** {phonetic}—— *{meaning}*")
+        vocab_lines.append(f"**{idx}. {phrase}** —— *{meaning}*")
 
     list_md = "\n".join(vocab_lines)
     workbench_url = f"https://dilonclaw.cloud/suzhou/vocab?id={session_id}"
@@ -599,12 +598,11 @@ def build_vocab_checklist_card(session_id: str, items: list[dict], show_answers:
     for idx, item in enumerate(items, 1):
         meaning = item.get("meaning", "").strip() or "（请根据课文记忆填空）"
         phrase = item.get("phrase", "").strip()
-        phonetic = f"`{item.get('phonetic', '')}` " if (item.get("phonetic") and item.get("phonetic") != "-") else ""
         note = item.get("note", "").strip()
         note_str = f" · *{note}*" if note else ""
         
         if show_answers:
-            checklist_lines.append(f"- [ ] **{idx}.** {meaning}\n      👉 答案：`{phrase}` {phonetic}{note_str}")
+            checklist_lines.append(f"- [ ] **{idx}.** {meaning}\n      👉 答案：`{phrase}`{note_str}")
         else:
             checklist_lines.append(f"- [ ] **{idx}.** {meaning}")
 
@@ -690,7 +688,7 @@ def build_vocab_dictation_card(session_id: str, items: list[dict], current_index
 
     # 答案区内容展示
     if show_answer:
-        answer_md = f"**【英文答案】**：`{cur.get('phrase', '')}`  \n**【国际音标】**：{cur.get('phonetic', '-')}\n**【中考提醒】**：{cur.get('note', '苏州市初三考标核心词组')}"
+        answer_md = f"**【英文答案】**：`{cur.get('phrase', '')}`  \n**【中考提醒】**：{cur.get('note', '苏州市初三考标核心词组')}"
         reveal_button = {
             "tag": "button",
             "text": {"tag": "plain_text", "content": "🙈 隐藏答案"},

@@ -227,49 +227,6 @@
       box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.15);
       background: #f8fafc;
     }
-    .phonetic-input-wrap {
-      display: flex;
-      align-items: center;
-      gap: 6px;
-      margin-top: 6px;
-    }
-    .phonetic-label {
-      font-size: 11px;
-      color: #94a3b8;
-      font-weight: 600;
-      white-space: nowrap;
-    }
-    .phonetic-input {
-      width: 100%;
-      padding: 4px 8px;
-      border: 1px dashed #cbd5e1;
-      border-radius: 4px;
-      font-size: 12px;
-      font-family: 'Times New Roman', serif;
-      color: #64748b;
-      background: #f8fafc;
-      transition: border-color 0.15s;
-    }
-    .phonetic-input:focus {
-      outline: none;
-      border-color: var(--primary-light);
-      border-style: solid;
-      background: #ffffff;
-    }
-    .phrase-text {
-      font-weight: 700;
-      color: #0f172a;
-      font-size: 15px;
-      word-break: break-word;
-      line-height: 1.4;
-    }
-
-    .phonetic-tag {
-      color: #64748b;
-      font-family: 'Times New Roman', serif;
-      font-size: 13px;
-      margin-left: 6px;
-    }
     .meaning-input {
       width: 100%;
       padding: 8px 12px;
@@ -406,12 +363,6 @@
       line-height: 1.4;
     }
 
-    .answer-phonetic {
-      color: #64748b;
-      font-size: 15px;
-      margin-left: 8px;
-      font-family: 'Times New Roman', serif;
-    }
     .answer-note {
       font-size: 13px;
       color: #475569;
@@ -677,7 +628,6 @@
           <div class="answer-box" id="dictate-answer-box">
             <div>
               <span class="answer-phrase" id="dictate-answer-phrase">take...seriously</span>
-              <span class="answer-phonetic" id="dictate-answer-phonetic">/teɪk ˈsɪəriəsli/</span>
             </div>
             <div class="answer-note" id="dictate-answer-note">考点：后接代词时用宾格或放入中间</div>
           </div>
@@ -836,13 +786,6 @@
                    oninput="updateItemPhrase(${index}, this.value)"
                    onchange="updateItemPhrase(${index}, this.value)"
                    placeholder="输入英文短语/单词/整句..." />
-            <div class="phonetic-input-wrap">
-              <span class="phonetic-label">音标:</span>
-              <input type="text" class="phonetic-input" value="${escapeHtml(item.phonetic || '')}" 
-                     oninput="updateItemPhonetic(${index}, this.value)"
-                     onchange="updateItemPhonetic(${index}, this.value)"
-                     placeholder="/音标/ (选填)" />
-            </div>
           </td>
           <td>
             <input type="text" class="meaning-input" value="${escapeHtml(item.meaning || '')}" 
@@ -872,12 +815,6 @@
       }
     }
 
-    function updateItemPhonetic(index, val) {
-      if (currentSession.items[index]) {
-        currentSession.items[index].phonetic = val;
-      }
-    }
-
     function updateItemMeaning(index, val) {
       if (currentSession.items[index]) {
         currentSession.items[index].meaning = val;
@@ -900,7 +837,6 @@
       currentSession.items.push({
         id: currentSession.items.length + 1,
         phrase: "",
-        phonetic: "",
         meaning: "",
         note: ""
       });
@@ -971,7 +907,6 @@
 
       document.getElementById("dictate-chinese-prompt").innerText = cur.meaning || "（暂无中文释义）";
       document.getElementById("dictate-answer-phrase").innerText = cur.phrase;
-      document.getElementById("dictate-answer-phonetic").innerText = cur.phonetic || "";
       document.getElementById("dictate-answer-note").innerText = cur.note ? `考点提醒：${cur.note}` : "";
 
       const input = document.getElementById("dictate-input");
@@ -1062,9 +997,8 @@
           <thead>
             <tr>
               <th style="width: 45px;">序号</th>
-              <th style="width: 38%;">英文短语 / 词组</th>
-              <th style="width: 20%;">国际音标</th>
-              <th>中文考点释义</th>
+              <th style="width: 48%;">英文短语 / 词组 / 重点句</th>
+              <th>中文考点释义与提醒</th>
             </tr>
           </thead>
           <tbody>
@@ -1072,7 +1006,6 @@
               <tr>
                 <td class="td-num">${idx + 1}</td>
                 <td><strong>${item.phrase}</strong></td>
-                <td style="font-family: 'Times New Roman'; text-align: center;">${item.phonetic || '-'}</td>
                 <td>${item.meaning} ${item.note ? `<span style="font-size: 11px; color: #666;">(${item.note})</span>` : ''}</td>
               </tr>
             `).join('')}
