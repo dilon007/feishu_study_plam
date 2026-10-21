@@ -562,7 +562,7 @@ def build_vocab_list_card(session_id: str, items: list[dict], title: str = "课�
                     },
                     {
                         "tag": "button",
-                        "text": {"tag": "plain_text", "content": "✏️ 校对与修改中文释义"},
+                        "text": {"tag": "plain_text", "content": "✏️ 校对与修改词条/释义"},
                         "type": "default",
                         "multi_url": {
                             "url": workbench_url,

@@ -210,6 +210,52 @@
     }
     .vocab-table tr:hover { background: #f8fafc; }
     
+    .phrase-input {
+      width: 100%;
+      padding: 8px 12px;
+      border: 1px solid #cbd5e1;
+      border-radius: 6px;
+      font-size: 14px;
+      font-weight: 700;
+      color: #0f172a;
+      background: #ffffff;
+      transition: border-color 0.15s, box-shadow 0.15s;
+    }
+    .phrase-input:focus {
+      outline: none;
+      border-color: var(--primary-light);
+      box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.15);
+      background: #f8fafc;
+    }
+    .phonetic-input-wrap {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      margin-top: 6px;
+    }
+    .phonetic-label {
+      font-size: 11px;
+      color: #94a3b8;
+      font-weight: 600;
+      white-space: nowrap;
+    }
+    .phonetic-input {
+      width: 100%;
+      padding: 4px 8px;
+      border: 1px dashed #cbd5e1;
+      border-radius: 4px;
+      font-size: 12px;
+      font-family: 'Times New Roman', serif;
+      color: #64748b;
+      background: #f8fafc;
+      transition: border-color 0.15s;
+    }
+    .phonetic-input:focus {
+      outline: none;
+      border-color: var(--primary-light);
+      border-style: solid;
+      background: #ffffff;
+    }
     .phrase-text {
       font-weight: 700;
       color: #0f172a;
@@ -571,8 +617,8 @@
         <p id="session-desc">对标教材：译林牛津版九年级英语 · 苏州中考高频核心考点</p>
       </div>
       <div class="btn-group">
-        <button class="btn btn-outline" onclick="addNewRow()">➕ 补充短语</button>
-        <button class="btn btn-primary" onclick="saveVocabChanges()">💾 保存中文注释修改</button>
+        <button class="btn btn-outline" onclick="addNewRow()">➕ 添加新词条</button>
+        <button class="btn btn-primary" onclick="saveVocabChanges()">💾 保存词条与释义修改</button>
       </div>
     </div>
 
@@ -582,10 +628,10 @@
         <table class="vocab-table">
           <thead>
             <tr>
-              <th style="width: 60px; text-align: center;">序号</th>
-              <th style="width: 250px;">英文词组 / 单词</th>
-              <th>中文注释（点击即可直接修改）</th>
-              <th style="width: 180px;">中考考点备注</th>
+              <th style="width: 50px; text-align: center;">序号</th>
+              <th style="width: 320px;">英文词组 / 单词 (可直接输入编辑)</th>
+              <th>中文注释（中考释义，可直接编辑）</th>
+              <th style="width: 200px;">中考考点备注</th>
               <th style="width: 70px; text-align: center;">操作</th>
             </tr>
           </thead>
@@ -594,8 +640,12 @@
           </tbody>
         </table>
         <div class="table-actions">
-          <span style="font-size: 13px; color: var(--text-muted);" id="vocab-count-indicator">共 0 个高亮划线词组</span>
+          <div style="display: flex; align-items: center; gap: 12px;">
+            <button class="btn btn-outline" style="font-size: 13px;" onclick="addNewRow()">➕ 添加新词条</button>
+            <span style="font-size: 13px; color: var(--text-muted);" id="vocab-count-indicator">共 0 个高亮划线词组</span>
+          </div>
           <div class="btn-group">
+            <button class="btn btn-primary" onclick="saveVocabChanges()">💾 保存修改</button>
             <button class="btn btn-accent" onclick="switchTab('dictate')">▶️ 开始逐词默写</button>
             <button class="btn btn-outline" onclick="switchTab('print')">🖨️ 打印为 A4 纸</button>
           </div>
@@ -762,7 +812,17 @@
       renderPrintTable();
     }
 
-    // 渲染面板 1：编辑表格 (英 -> 中)
+    function escapeHtml(str) {
+      if (!str) return '';
+      return String(str)
+        .replace(/&/g, '&amp;')
+        .replace(/"/g, '&quot;')
+        .replace(/'/g, '&#39;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;');
+    }
+
+    // 渲染面板 1：编辑表格 (英 -> 中 全字段在线编辑)
     function renderEditTable() {
       const tbody = document.getElementById("vocab-table-body");
       tbody.innerHTML = "";
@@ -772,17 +832,28 @@
         tr.innerHTML = `
           <td style="text-align: center; color: var(--text-muted); font-weight: 600;">${index + 1}</td>
           <td>
-            <div class="phrase-text">${item.phrase}</div>
-            <span class="phonetic-tag">${item.phonetic || ''}</span>
+            <input type="text" class="phrase-input" value="${escapeHtml(item.phrase || '')}" 
+                   oninput="updateItemPhrase(${index}, this.value)"
+                   onchange="updateItemPhrase(${index}, this.value)"
+                   placeholder="输入英文短语/单词/整句..." />
+            <div class="phonetic-input-wrap">
+              <span class="phonetic-label">音标:</span>
+              <input type="text" class="phonetic-input" value="${escapeHtml(item.phonetic || '')}" 
+                     oninput="updateItemPhonetic(${index}, this.value)"
+                     onchange="updateItemPhonetic(${index}, this.value)"
+                     placeholder="/音标/ (选填)" />
+            </div>
           </td>
           <td>
-            <input type="text" class="meaning-input" value="${item.meaning}" 
+            <input type="text" class="meaning-input" value="${escapeHtml(item.meaning || '')}" 
+                   oninput="updateItemMeaning(${index}, this.value)"
                    onchange="updateItemMeaning(${index}, this.value)"
                    placeholder="输入对应中考中文注释..." />
           </td>
           <td>
             <input type="text" class="meaning-input" style="font-size: 12px; color: #64748b;" 
-                   value="${item.note || ''}" 
+                   value="${escapeHtml(item.note || '')}" 
+                   oninput="updateItemNote(${index}, this.value)"
                    onchange="updateItemNote(${index}, this.value)"
                    placeholder="考点提示..." />
           </td>
@@ -793,6 +864,18 @@
         `;
         tbody.appendChild(tr);
       });
+    }
+
+    function updateItemPhrase(index, val) {
+      if (currentSession.items[index]) {
+        currentSession.items[index].phrase = val;
+      }
+    }
+
+    function updateItemPhonetic(index, val) {
+      if (currentSession.items[index]) {
+        currentSession.items[index].phonetic = val;
+      }
     }
 
     function updateItemMeaning(index, val) {
@@ -816,13 +899,21 @@
     function addNewRow() {
       currentSession.items.push({
         id: currentSession.items.length + 1,
-        phrase: "new phrase",
-        phonetic: "/.../",
-        meaning: "新词组中文释义",
-        note: "补充考点"
+        phrase: "",
+        phonetic: "",
+        meaning: "",
+        note: ""
       });
       renderAll();
-      showToast("已增加新词条，请在列表中直接修改");
+      showToast("已增加新词条，请在左侧输入英文，右侧输入中文释义");
+      setTimeout(() => {
+        const phraseInputs = document.querySelectorAll(".phrase-input");
+        if (phraseInputs.length > 0) {
+          const lastInput = phraseInputs[phraseInputs.length - 1];
+          lastInput.focus();
+          lastInput.scrollIntoView({ behavior: 'smooth', block: 'center' });
+        }
+      }, 60);
     }
 
     // 保存修改到后端
@@ -854,7 +945,7 @@
         }
       }
       if (saved) {
-        showToast("✅ 中文注释与词条修改已成功保存！");
+        showToast("✅ 英文词条与中文释义已全部成功保存！");
         renderPrintTable();
       } else {
         showToast("已在当前页面生效");

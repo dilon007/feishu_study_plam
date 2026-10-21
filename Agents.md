@@ -159,6 +159,7 @@ feishu_study_plam/
 | 2026-10-18 | Bugfix | 移除课堂默写卷模式下的所有答案提示信息：彻底清除打印自测卷表格中文释义列中的 [提示]/考点说明（防止英文原词与语法答案泄露），将表头规范为“中文释义（请默写对应英文短语/单词）”，保留纯中文题目保障真实自测效果 | `frontend/vocab_workbench.html`, `Agents.md` |
 | 2026-10-18 | Bugfix | 解决点击【生成默写清单】未在主会话流出现的问题：定位为通过卡片 `message_id` 回复会折叠进卡片话题回复串（用户不可见）；重构 `send_card_to_dialog` 优先按 `chat_id`/`user_id` 主动投递，确保纯中文 Todo List 默写清单作为独立新消息卡片直接出现在对话框主界面 | `backend/feishu_client.py`, `backend/main.py`, `AGENTS.md` |
 | 2026-10-21 | Config | 全局同步更新大模型 API KEY 并解决课文划线无法识别问题：排查确认原凭证过期引发 401 报错导致划线识别降级失败；本地与首尔云服务器同步热更最新 Gemini 凭证，实测原课文照片精准命中 6 处重点短语/全句并完成服务保活重启 | `.env`, `backend/llm_provider.py`, `AGENTS.md` |
+| 2026-10-21 | Feature | 支持中台词条全字段在线输入与修改：重构前端词汇校对工作台，将原本只读的英文短语列升级为原生 `<input class="phrase-input">` 与音标输入框，补充短语时自动生成空白条目并聚焦输入框，打通中英文双向编辑与后端持久化存储 | `frontend/vocab_workbench.html`, `backend/card_builder.py`, `AGENTS.md` |
 
 
 
