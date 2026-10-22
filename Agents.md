@@ -161,6 +161,7 @@ feishu_study_plam/
 | 2026-10-21 | Config | 全局同步更新大模型 API KEY 并解决课文划线无法识别问题：排查确认原凭证过期引发 401 报错导致划线识别降级失败；本地与首尔云服务器同步热更最新 Gemini 凭证，实测原课文照片精准命中 6 处重点短语/全句并完成服务保活重启 | `.env`, `backend/llm_provider.py`, `AGENTS.md` |
 | 2026-10-21 | Feature | 支持中台词条全字段在线输入与修改：重构前端词汇校对工作台，将原本只读的英文短语列升级为原生 `<input class="phrase-input">` 与音标输入框，补充短语时自动生成空白条目并聚焦输入框，打通中英文双向编辑与后端持久化存储 | `frontend/vocab_workbench.html`, `backend/card_builder.py`, `AGENTS.md` |
 | 2026-10-21 | Refactor | 移除全流程音标展示与输入：响应用户需求，彻底移除中台工作台、A4打印单、逐词默写卡及飞书卡片中的音标输入与展示，界面精简聚焦于英文短语与中文释义 | `frontend/vocab_workbench.html`, `backend/card_builder.py`, `AGENTS.md` |
+| 2026-10-22 | Feature | 将后台 AI 接口无缝切换为 DeepSeek 主用并完整保留 Google Gemini 作为无感降级容灾：实现文科 `deepseek-chat` 敏捷响应与理科 `deepseek-reasoner` (R1) 慢思考深度推导；多模态拍照搜题与课文划线词汇提取优先路由 DeepSeek 视觉，遇到限流或异常时自动毫秒级回退至 Google Gemini 旗舰矩阵，保障双重极高可用性 | `backend/llm_provider.py`, `.env`, `AGENTS.md` |
 
 
 
@@ -175,7 +176,7 @@ feishu_study_plam/
 - [x] 英语课文划线生词短语提取、英->中确认修改、逐词翻页默写与 A4 纸打印导出
 - [x] 独立配置专属英语背单词机器人（苏九背词伴读，网关 /api/feishu/vocab_event）
 - [x] 独立配置专属数理化拍照搜题机器人（苏九数理化搜题伴读，专精数理化试卷拍照识题与苏州考标解题，网关 /api/feishu/stem_event）
-- [ ] 接入国内平替大模型接口（DeepSeek R1 / 通义千问等备选）
+- [x] 接入国内大模型接口（DeepSeek R1 / Chat 作为主用，Google Gemini 完整保留作为无感降级备用）
 - [ ] 补充苏科版数学/物理章节知识点知识库 (RAG 向量切片构建)
 - [ ] 扩充 `guardrail.py` 中的高中超纲禁忌词库与正向初中考标词库
 - [ ] 重启并完善飞书工作台 Web App 网页端与免登流程
