@@ -20,12 +20,19 @@ from card_builder import (
     build_vocab_checklist_card,
     build_vocab_bot_welcome_card, build_image_batch_received_card,
     build_image_processing_card,
-    build_stem_bot_welcome_card, build_stem_qa_result_card
+    build_stem_bot_welcome_card, build_stem_qa_result_card,
+    build_vocab_bitable_welcome_card, build_vocab_bitable_append_result_card,
+    build_vocab_bitable_recite_card, build_vocab_bitable_checklist_card,
+    build_vocab_bitable_dictation_card,
+    build_arts_bot_welcome_card, build_arts_qa_result_card
 )
 from feishu_client import (
     reply_interactive_card, send_chat_card, send_user_card,
     send_card_to_dialog, download_image_resource,
-    VOCAB_APP_ID, VOCAB_APP_SECRET, STEM_APP_ID, STEM_APP_SECRET
+    VOCAB_APP_ID, VOCAB_APP_SECRET,
+    VOCAB_BITABLE_APP_ID, VOCAB_BITABLE_APP_SECRET,
+    STEM_APP_ID, STEM_APP_SECRET,
+    ARTS_APP_ID, ARTS_APP_SECRET
 )
 from llm_provider import (
     generate_suzhou_answer, generate_suzhou_vision_answer, 
@@ -35,6 +42,11 @@ from llm_provider import (
 from vocab_service import (
     create_vocab_session, get_vocab_session, update_vocab_session,
     get_user_latest_vocab_session
+)
+from bitable_service import (
+    get_user_bitable_info, bind_user_bitable, parse_bitable_url,
+    create_or_ensure_user_bitable, append_vocab_to_bitable,
+    fetch_vocab_from_bitable, update_vocab_status_in_bitable
 )
 from vocab_aggregator import (
     add_image_to_batch, trigger_immediate_batch_extraction,
@@ -49,13 +61,19 @@ load_dotenv()
 VOCAB_APP_ID = os.getenv("FEISHU_VOCAB_APP_ID", "").strip() or os.getenv("FEISHU_APP_ID", "").strip()
 VOCAB_APP_SECRET = os.getenv("FEISHU_VOCAB_APP_SECRET", "").strip() or os.getenv("FEISHU_APP_SECRET", "").strip()
 
+VOCAB_BITABLE_APP_ID = os.getenv("FEISHU_VOCAB_BITABLE_APP_ID", "").strip() or VOCAB_APP_ID
+VOCAB_BITABLE_APP_SECRET = os.getenv("FEISHU_VOCAB_BITABLE_APP_SECRET", "").strip() or VOCAB_APP_SECRET
+
 STEM_APP_ID = os.getenv("FEISHU_STEM_APP_ID", "").strip() or os.getenv("FEISHU_APP_ID", "").strip()
 STEM_APP_SECRET = os.getenv("FEISHU_STEM_APP_SECRET", "").strip() or os.getenv("FEISHU_APP_SECRET", "").strip()
 
+ARTS_APP_ID = os.getenv("FEISHU_ARTS_APP_ID", "").strip() or os.getenv("FEISHU_APP_ID", "").strip()
+ARTS_APP_SECRET = os.getenv("FEISHU_ARTS_APP_SECRET", "").strip() or os.getenv("FEISHU_APP_SECRET", "").strip()
+
 app = FastAPI(
     title="苏九学伴 - 学习助手中台",
-    description="针对苏州市9年级学生的学习助手中台后端 API 与飞书多机器人集群（含全科中台、独立英语背词伴读机器人与独立数理化拍照搜题机器人）",
-    version="1.8.0"
+    description="针对苏州市9年级学生的学习助手中台后端 API 与飞书多机器人集群（含全科中台、独立英语背词伴读机器人、独立数理化拍照搜题机器人、新版多维表格默写机器人与独立文科检索问答机器人）",
+    version="1.9.0"
 )
 
 # 内存会话管理：全科综合机器人当前学科
@@ -798,6 +816,417 @@ async def feishu_vocab_event_handler(request: Request, background_tasks: Backgro
 
     return {"code": 0, "msg": "success"}
 
+
+# ==============================================================================
+# 新版专属英语默写机器人（飞书交互卡片 + 飞书多维表格 Bitable 架构，零 HTML 依赖）
+# 核心原则：
+# 1. 原版英语默写机器人 (/api/feishu/vocab_event) 完整保留；
+# 2. 新机器人 (/api/feishu/vocab_bitable_event) 以飞书多维表格为核心词库：
+#    - 拍照只负责往多维表格里追加词条；
+#    - 所有背诵和默写均实时从多维表格拉取！
+# ==============================================================================
+
+DEMO_BITABLE_VOCAB_ITEMS = [
+    {"phrase": "take...seriously", "meaning": "认真对待；严肃处理", "note": "9A Unit 1 核心短语"},
+    {"phrase": "pay attention to", "meaning": "注意；留心", "note": "后接名词或 doing 动名词"},
+    {"phrase": "leave a good impression on sb.", "meaning": "给某人留下好印象", "note": "苏州中考完形与写作高频短语"},
+    {"phrase": "have difficulty (in) doing sth.", "meaning": "做某事有困难", "note": "in 可省略，后接 V-ing"}
+]
+
+async def process_vocab_bitable_bot_im_message_task(event: dict):
+    """
+    新版英语默写机器人（飞书交互卡片 + 多维表格版）异步消息处理器：
+    - 发送图片 -> 识别划线短语 -> 直接追加写入飞书多维表格；
+    - 发送飞书多维表格链接 -> 自动绑定为当前学生的核心词库；
+    - 发送“默写”/“背诵”/“翻页” -> 直接从多维表格实时拉取数据并推送对应交互卡片。
+    """
+    try:
+        message = event.get("message", {})
+        message_id = message.get("message_id")
+        msg_type = message.get("message_type")
+        chat_id = message.get("chat_id")
+        sender_id = event.get("sender", {}).get("sender_id", {}).get("open_id") or chat_id or "default_user"
+
+        card_to_send = None
+
+        if msg_type == "image":
+            try:
+                content_obj = json.loads(message.get("content", "{}"))
+                image_key = content_obj.get("image_key", "")
+            except Exception:
+                image_key = ""
+
+            if image_key and message_id:
+                img_bytes = await download_image_resource(
+                    message_id, image_key,
+                    app_id=VOCAB_BITABLE_APP_ID, app_secret=VOCAB_BITABLE_APP_SECRET
+                )
+                if img_bytes:
+                    # 加入 30 秒防抖聚合队列 (mode="bitable")，识别后自动追加写入飞书多维表格
+                    await add_image_to_batch(
+                        user_id=sender_id,
+                        chat_id=chat_id,
+                        message_id=message_id,
+                        img_bytes=img_bytes,
+                        app_id=VOCAB_BITABLE_APP_ID,
+                        app_secret=VOCAB_BITABLE_APP_SECRET,
+                        mode="bitable"
+                    )
+                    return
+                else:
+                    card_to_send = {
+                        "config": {"wide_screen_mode": True},
+                        "header": {"template": "orange", "title": {"tag": "plain_text", "content": "⚠️ 图片读取失败"}},
+                        "elements": [
+                            {"tag": "div", "text": {"tag": "lark_md", "content": "未能读取图片，请确认该机器人应用已开通 `im:resource` 与 `bitable:app` 权限。"}}
+                        ]
+                    }
+
+        elif msg_type == "text":
+            try:
+                content_obj = json.loads(message.get("content", "{}"))
+                raw_text = content_obj.get("text", "")
+            except Exception:
+                raw_text = message.get("content", "")
+
+            user_query = clean_message_text(raw_text)
+
+            # 意图 0：如果用户直接发送了飞书多维表格链接 (包含 /base/xxx)，自动绑定为该用户的核心词库
+            parsed_bt = parse_bitable_url(user_query)
+            if parsed_bt:
+                app_token, table_id = parsed_bt
+                bind_user_bitable(sender_id, app_token, table_id, url=user_query.strip())
+                ok, info, msg = await create_or_ensure_user_bitable(
+                    sender_id, VOCAB_BITABLE_APP_ID, VOCAB_BITABLE_APP_SECRET
+                )
+                items, b_info, _ = await fetch_vocab_from_bitable(
+                    sender_id, "all", VOCAB_BITABLE_APP_ID, VOCAB_BITABLE_APP_SECRET
+                )
+                card_to_send = build_vocab_bitable_welcome_card(
+                    bitable_url=b_info.get("url", ""),
+                    total_count=len(items),
+                    sync_note=f"已成功绑定您的飞书多维表格！（{msg}）"
+                )
+
+            # 意图 1：呼出主导航 / 帮助 / 问候
+            elif not user_query or user_query in ["菜单", "menu", "help", "帮助", "开始", "你好", "hi", "hello", "背单词", "多维表格"]:
+                items, b_info, _ = await fetch_vocab_from_bitable(
+                    sender_id, "all", VOCAB_BITABLE_APP_ID, VOCAB_BITABLE_APP_SECRET
+                )
+                card_to_send = build_vocab_bitable_welcome_card(
+                    bitable_url=b_info.get("url", ""),
+                    total_count=len(items)
+                )
+
+            # 意图 2：要求从多维表格拉取生成纯中文 Todo List 默写清单
+            elif any(k in user_query for k in ["默写", "清单", "自测", "练习"]):
+                scope = "latest" if "最近" in user_query or "最新" in user_query else ("unmastered" if "待默写" in user_query else "all")
+                items, b_info, _ = await fetch_vocab_from_bitable(
+                    sender_id, scope, VOCAB_BITABLE_APP_ID, VOCAB_BITABLE_APP_SECRET
+                )
+                if not items:
+                    _, b_info, _ = await append_vocab_to_bitable(
+                        sender_id, DEMO_BITABLE_VOCAB_ITEMS, "示例初三核心短语",
+                        VOCAB_BITABLE_APP_ID, VOCAB_BITABLE_APP_SECRET
+                    )
+                    items, b_info, _ = await fetch_vocab_from_bitable(
+                        sender_id, "all", VOCAB_BITABLE_APP_ID, VOCAB_BITABLE_APP_SECRET
+                    )
+                card_to_send = build_vocab_bitable_checklist_card(
+                    items=items,
+                    bitable_url=b_info.get("url", ""),
+                    show_answers=False,
+                    scope=scope
+                )
+
+            # 意图 3：要求从多维表格拉取背诵清单 / 词库列表
+            elif any(k in user_query for k in ["背诵", "词库", "列表", "对照"]):
+                items, b_info, from_remote = await fetch_vocab_from_bitable(
+                    sender_id, "all", VOCAB_BITABLE_APP_ID, VOCAB_BITABLE_APP_SECRET
+                )
+                card_to_send = build_vocab_bitable_recite_card(
+                    items=items,
+                    bitable_url=b_info.get("url", ""),
+                    scope="all",
+                    from_remote=from_remote
+                )
+
+            # 意图 4：逐词翻页默写
+            elif any(k in user_query for k in ["逐词", "翻页", "抽查"]):
+                items, b_info, _ = await fetch_vocab_from_bitable(
+                    sender_id, "unmastered", VOCAB_BITABLE_APP_ID, VOCAB_BITABLE_APP_SECRET
+                )
+                card_to_send = build_vocab_bitable_dictation_card(
+                    items=items,
+                    bitable_url=b_info.get("url", ""),
+                    current_index=0,
+                    show_answer=False,
+                    scope="unmastered"
+                )
+
+            # 意图 5：查单词 / 其他输入
+            elif user_query.startswith("查单词") or user_query.startswith("单词") or re.match(r"^[a-zA-Z\s\-]+$", user_query):
+                search_word = re.sub(r"^(查单词|单词|word)\s*", "", user_query, flags=re.IGNORECASE).strip()
+                word_result = query_english_word(search_word)
+                if word_result.get("matched"):
+                    card_to_send = build_word_card(word_result)
+                else:
+                    llm_ans = await generate_suzhou_answer(f"初三英语考纲单词与搭配：{search_word}", "九年级英语")
+                    card_to_send = build_qa_result_card(f"单词：{search_word}", llm_ans or "词库正在收录中", "九年级英语", "english")
+
+            else:
+                items, b_info, _ = await fetch_vocab_from_bitable(
+                    sender_id, "all", VOCAB_BITABLE_APP_ID, VOCAB_BITABLE_APP_SECRET
+                )
+                card_to_send = build_vocab_bitable_welcome_card(
+                    bitable_url=b_info.get("url", ""),
+                    total_count=len(items),
+                    sync_note="📸 直接发送课本划线照片即可将词条追加写入多维表格；或点击下方按钮直接从多维表格拉取背诵/默写！"
+                )
+
+        if card_to_send and message_id:
+            await reply_interactive_card(
+                message_id, card_to_send,
+                app_id=VOCAB_BITABLE_APP_ID, app_secret=VOCAB_BITABLE_APP_SECRET
+            )
+
+    except Exception as e:
+        print(f"[Vocab Bitable Bot Async Task Error] 异常: {e}")
+
+
+@app.post("/api/feishu/vocab_bitable_event")
+@app.post("/suzhou/api/feishu/vocab_bitable_event")
+@app.post("/api/feishu/vocab_bitable/event")
+async def feishu_vocab_bitable_event_handler(request: Request, background_tasks: BackgroundTasks):
+    """
+    新版专属英语默写机器人（飞书交互卡片 + 多维表格版）Webhook 网关端点：
+    1. URL Verification 安全握手
+    2. 卡片 Action 交互（全量实时读写飞书多维表格，零 HTML 网页依赖）
+    3. IM 消息接收（拍照追加写入多维表格 + 多维表格链接绑定 + 拉取默写）
+    """
+    try:
+        body = await request.json()
+    except Exception:
+        return {"code": 0, "msg": "invalid json"}
+
+    # 1. 飞书 URL 校验握手
+    if body.get("type") == "url_verification":
+        return {"challenge": body.get("challenge", "")}
+
+    # 2. 飞书交互式卡片点击回传 (card.action.trigger)
+    if "action" in body and ("open_message_id" in body or "open_id" in body):
+        action_val = body.get("action", {}).get("value", {})
+        action_type = action_val.get("action")
+        sender_id = (
+            body.get("open_id")
+            or body.get("user_id")
+            or body.get("context", {}).get("open_id", "")
+            or body.get("context", {}).get("user_id", "")
+            or body.get("open_chat_id", "")
+            or "default_user"
+        )
+        open_chat_id = (
+            body.get("open_chat_id")
+            or body.get("context", {}).get("open_chat_id", "")
+            or ""
+        )
+
+        # 返回多维表格版首屏导航
+        if action_type == "back_to_bitable_vocab_menu":
+            items, b_info, _ = await fetch_vocab_from_bitable(
+                sender_id, "all", VOCAB_BITABLE_APP_ID, VOCAB_BITABLE_APP_SECRET
+            )
+            return {"card": build_vocab_bitable_welcome_card(b_info.get("url", ""), len(items))}
+
+        # 一键自动创建/连接飞书多维表格
+        elif action_type == "bitable_auto_create":
+            ok, b_info, msg = await create_or_ensure_user_bitable(
+                sender_id, VOCAB_BITABLE_APP_ID, VOCAB_BITABLE_APP_SECRET
+            )
+            items, b_info, _ = await fetch_vocab_from_bitable(
+                sender_id, "all", VOCAB_BITABLE_APP_ID, VOCAB_BITABLE_APP_SECRET
+            )
+            return {
+                "toast": {"type": "success" if ok else "info", "content": msg[:60]},
+                "card": build_vocab_bitable_welcome_card(b_info.get("url", ""), len(items), sync_note=msg)
+            }
+
+        # 追加示例词条到多维表格
+        elif action_type == "bitable_init_demo":
+            sync_ok, b_info, sync_msg = await append_vocab_to_bitable(
+                sender_id,
+                DEMO_BITABLE_VOCAB_ITEMS,
+                batch_title="9A 课文重点划线示例",
+                app_id=VOCAB_BITABLE_APP_ID,
+                app_secret=VOCAB_BITABLE_APP_SECRET
+            )
+            return {
+                "toast": {"type": "success", "content": "已将示例词条追加至多维表格词库！"},
+                "card": build_vocab_bitable_append_result_card(
+                    appended_items=DEMO_BITABLE_VOCAB_ITEMS,
+                    bitable_url=b_info.get("url", ""),
+                    batch_title="9A 课文重点划线示例",
+                    sync_ok=sync_ok,
+                    sync_msg=sync_msg
+                )
+            }
+
+        # 从多维表格实时拉取【英汉对照背诵清单】
+        elif action_type == "bitable_pull_recite":
+            scope = action_val.get("scope", "all")
+            items, b_info, from_remote = await fetch_vocab_from_bitable(
+                sender_id, scope, VOCAB_BITABLE_APP_ID, VOCAB_BITABLE_APP_SECRET
+            )
+            if not items and scope == "all":
+                await append_vocab_to_bitable(
+                    sender_id, DEMO_BITABLE_VOCAB_ITEMS, "9A 课文重点划线示例",
+                    VOCAB_BITABLE_APP_ID, VOCAB_BITABLE_APP_SECRET
+                )
+                items, b_info, from_remote = await fetch_vocab_from_bitable(
+                    sender_id, scope, VOCAB_BITABLE_APP_ID, VOCAB_BITABLE_APP_SECRET
+                )
+            return {
+                "toast": {"type": "info", "content": f"已从多维表格实时拉取 {len(items)} 条词汇"},
+                "card": build_vocab_bitable_recite_card(items, b_info.get("url", ""), scope=scope, from_remote=from_remote)
+            }
+
+        # 从多维表格实时拉取生成【纯中文 Todo List 默写清单】（直接投递至主对话框）
+        elif action_type == "bitable_pull_checklist":
+            scope = action_val.get("scope", "all")
+            items, b_info, _ = await fetch_vocab_from_bitable(
+                sender_id, scope, VOCAB_BITABLE_APP_ID, VOCAB_BITABLE_APP_SECRET
+            )
+            if not items:
+                await append_vocab_to_bitable(
+                    sender_id, DEMO_BITABLE_VOCAB_ITEMS, "9A 课文重点划线示例",
+                    VOCAB_BITABLE_APP_ID, VOCAB_BITABLE_APP_SECRET
+                )
+                items, b_info, _ = await fetch_vocab_from_bitable(
+                    sender_id, "all", VOCAB_BITABLE_APP_ID, VOCAB_BITABLE_APP_SECRET
+                )
+            checklist_card = build_vocab_bitable_checklist_card(
+                items=items,
+                bitable_url=b_info.get("url", ""),
+                show_answers=False,
+                scope=scope
+            )
+            background_tasks.add_task(
+                send_card_to_dialog,
+                checklist_card,
+                "",
+                open_chat_id,
+                sender_id,
+                VOCAB_BITABLE_APP_ID,
+                VOCAB_BITABLE_APP_SECRET
+            )
+            return {"toast": {"type": "success", "content": f"已从多维表格拉取 {len(items)} 条词汇并在对话框生成默写单！"}}
+
+        # 在默写清单卡片上切换显示/隐藏答案、切换范围或重新同步最新多维表格修改
+        elif action_type == "bitable_toggle_checklist_answers":
+            scope = action_val.get("scope", "all")
+            show_ans = action_val.get("show_answers", False)
+            items, b_info, _ = await fetch_vocab_from_bitable(
+                sender_id, scope, VOCAB_BITABLE_APP_ID, VOCAB_BITABLE_APP_SECRET
+            )
+            return {
+                "toast": {"type": "info", "content": "已从多维表格同步最新词条"},
+                "card": build_vocab_bitable_checklist_card(
+                    items=items,
+                    bitable_url=b_info.get("url", ""),
+                    show_answers=show_ans,
+                    scope=scope
+                )
+            }
+
+        # 从多维表格实时拉取进行【逐词翻页默写】
+        elif action_type == "bitable_pull_dictate_step":
+            scope = action_val.get("scope", "all")
+            idx = int(action_val.get("index", 0))
+            reveal = bool(action_val.get("reveal", False))
+            items, b_info, _ = await fetch_vocab_from_bitable(
+                sender_id, scope, VOCAB_BITABLE_APP_ID, VOCAB_BITABLE_APP_SECRET
+            )
+            if not items:
+                await append_vocab_to_bitable(
+                    sender_id, DEMO_BITABLE_VOCAB_ITEMS, "9A 课文重点划线示例",
+                    VOCAB_BITABLE_APP_ID, VOCAB_BITABLE_APP_SECRET
+                )
+                items, b_info, _ = await fetch_vocab_from_bitable(
+                    sender_id, "all", VOCAB_BITABLE_APP_ID, VOCAB_BITABLE_APP_SECRET
+                )
+            return {
+                "card": build_vocab_bitable_dictation_card(
+                    items=items,
+                    bitable_url=b_info.get("url", ""),
+                    current_index=idx,
+                    show_answer=reveal,
+                    scope=scope
+                )
+            }
+
+        # 在默写卡片上标记【已掌握 / 易错重点】，同步回写飞书多维表格并进入下一题
+        elif action_type == "bitable_mark_status":
+            record_id = action_val.get("record_id", "")
+            new_status = action_val.get("new_status", "已掌握")
+            scope = action_val.get("scope", "all")
+            next_idx = int(action_val.get("index", 0))
+            await update_vocab_status_in_bitable(
+                sender_id, record_id, new_status,
+                VOCAB_BITABLE_APP_ID, VOCAB_BITABLE_APP_SECRET
+            )
+            items, b_info, _ = await fetch_vocab_from_bitable(
+                sender_id, scope, VOCAB_BITABLE_APP_ID, VOCAB_BITABLE_APP_SECRET
+            )
+            return {
+                "toast": {"type": "success", "content": f"已将状态【{new_status}】同步写回多维表格！"},
+                "card": build_vocab_bitable_dictation_card(
+                    items=items,
+                    bitable_url=b_info.get("url", ""),
+                    current_index=next_idx,
+                    show_answer=False,
+                    scope=scope
+                )
+            }
+
+        # 点击【⚡ 立即识别生成】提前结束 30 秒倒计时并追加写入多维表格
+        elif action_type == "trigger_immediate_extraction":
+            target_user = action_val.get("user_id") or sender_id
+            img_count = get_batch_image_count(target_user, mode="bitable")
+            background_tasks.add_task(
+                trigger_immediate_batch_extraction,
+                target_user,
+                VOCAB_BITABLE_APP_ID,
+                VOCAB_BITABLE_APP_SECRET,
+                "bitable"
+            )
+            return {"card": build_image_processing_card(img_count)}
+
+        return {"toast": {"type": "info", "content": "功能已就绪"}}
+
+    # 3. 飞书 v2.0 事件订阅 (im.message.receive_v1)
+    header = body.get("header", {})
+    event_type = header.get("event_type")
+
+    if event_type == "im.message.receive_v1":
+        event = body.get("event", {})
+        sender_type = event.get("sender", {}).get("sender_type")
+        if sender_type == "app":
+            return {"code": 0, "msg": "ignore bot message"}
+
+        event_id = header.get("event_id", "")
+        message = event.get("message", {})
+        message_id = message.get("message_id", "")
+
+        if check_and_mark_event_processed(event_id, message_id):
+            print(f"[Vocab Bitable Bot Deduplicate] 拦截到重复事件: event_id={event_id}, message_id={message_id}")
+            return {"code": 0, "msg": "duplicate event ignored"}
+
+        background_tasks.add_task(process_vocab_bitable_bot_im_message_task, event)
+        return {"code": 0, "msg": "success"}
+
+    return {"code": 0, "msg": "success"}
+
+
 # ==============================================================================
 # 专属数理化拍照搜题机器人（苏九数理化搜题伴读）
 # 专精苏州市初三数学（苏科版）、物理（苏科版）、化学（初三化学/沪教版）拍照搜题
@@ -1047,6 +1476,230 @@ async def feishu_stem_event_handler(request: Request, background_tasks: Backgrou
 
     return {"code": 0, "msg": "success"}
 
+# ==============================================================================
+# 专属文科检索问答机器人（苏九文科检索伴读）
+# 专精苏州市初三语文（统编版字词/古诗文）、英语（译林牛津版单词短语）、
+# 历史（统编版世界近代史）与道德与法治的群聊 @ 检索问答，即问即答无特殊流程
+# ==============================================================================
+
+def detect_arts_subject(user_query: str) -> str:
+    """根据提问内容自动研判文科子学科，用于注入对应教材考标提示"""
+    if any(k in user_query for k in ["历史", "朝代", "变法", "革命", "条约", "文艺复兴", "新航路", "工业革命", "一战", "二战", "十月革命", "冷战", "近代化"]):
+        return "九年级历史 (统编版)"
+    if any(k in user_query for k in ["道德", "法治", "宪法", "公民", "制度", "国情", "核心价值观", "民主", "法律"]):
+        return "九年级道德与法治 (统编版)"
+    if any(k in user_query for k in ["古文", "古诗", "文言", "字词", "拼音", "成语", "病句", "名著", "文学常识", "课文", "默写", "赏析", "名句", "诗句", "诗意", "作者"]):
+        return "九年级语文 (统编版)"
+    return "九年级文科综合 (统编版/译林版)"
+
+async def process_arts_bot_im_message_task(event: dict):
+    """
+    专属文科检索问答机器人（苏九文科检索伴读）异步消息处理器：
+    群聊 @ 或私聊直接提问，即问即答：
+    - 英语单词/短语 → 优先本地译林版词库秒级命中，未命中走大模型检索；
+    - 语文古诗文 → 优先本地统编版古文库秒级命中，未命中走大模型检索；
+    - 其他文科问题（语文/历史/道法）→ 直接大模型规范检索解答；
+    - 全流程双重防超纲审查（提问输入 + 生成输出）。
+    """
+    try:
+        message = event.get("message", {})
+        message_id = message.get("message_id")
+        msg_type = message.get("message_type")
+
+        card_to_send = None
+
+        if msg_type == "image":
+            # 文科检索机器人专注文字问答，图片场景引导至对应专属机器人
+            card_to_send = {
+                "config": {"wide_screen_mode": True},
+                "header": {"template": "orange", "title": {"tag": "plain_text", "content": "📷 暂不支持图片检索"}},
+                "elements": [
+                    {"tag": "div", "text": {"tag": "lark_md", "content": "本机器人专注**文科文字内容检索**（语文、英语、历史、道法），请直接在群里 @ 本机器人并输入问题。\n\n- 📸 数理化试卷拍照搜题请使用**苏九数理化搜题伴读**；\n- 🇬🇧 英语课文划线识别请使用**苏九背词伴读**。"}}
+                ]
+            }
+
+        elif msg_type == "text":
+            try:
+                content_obj = json.loads(message.get("content", "{}"))
+                raw_text = content_obj.get("text", "")
+            except Exception:
+                raw_text = message.get("content", "")
+
+            user_query = clean_message_text(raw_text)
+
+            # 意图 1：呼出导航 / 帮助 / 问候（群里只 @ 不带内容同样返回使用指南）
+            if not user_query or user_query in ["菜单", "menu", "help", "帮助", "开始", "你好", "hi", "hello", "文科", "检索"]:
+                card_to_send = build_arts_bot_welcome_card()
+
+            # 意图 2：英语单词/短语检索（优先本地译林版词库秒级命中）
+            elif user_query.startswith("查单词") or user_query.startswith("单词") or re.match(r"^[a-zA-Z\s\-']+$", user_query):
+                search_word = re.sub(r"^(查单词|单词|word)\s*", "", user_query, flags=re.IGNORECASE).strip()
+                if not search_word:
+                    card_to_send = build_arts_bot_welcome_card()
+                else:
+                    word_result = query_english_word(search_word)
+                    if word_result.get("matched"):
+                        card_to_send = build_word_card(word_result)
+                    else:
+                        llm_ans = await generate_suzhou_answer(
+                            f"初三英语考纲单词与短语释义、常见搭配与用法辨析：{search_word}",
+                            "九年级英语 (译林牛津版9A/9B)"
+                        )
+                        out_check = check_for_out_of_bounds(llm_ans or "")
+                        if llm_ans and out_check["is_safe"]:
+                            card_to_send = build_arts_qa_result_card(f"单词：{search_word}", llm_ans, "九年级英语")
+                        elif llm_ans:
+                            card_to_send = {
+                                "config": {"wide_screen_mode": True},
+                                "header": {"template": "red", "title": {"tag": "plain_text", "content": "🛡️ 答题输出防超纲拦截"}},
+                                "elements": [
+                                    {"tag": "div", "text": {"tag": "lark_md", "content": f"生成内容包含超纲内容：`{out_check['violations']}`，已熔断保护。请换个问法。"}}
+                                ]
+                            }
+                        else:
+                            card_to_send = build_arts_qa_result_card(f"单词：{search_word}", "词库正在收录中，请稍后再试或换个问法。", "九年级英语")
+
+            # 意图 3：语文古诗文检索（优先本地统编版古文古诗库秒级命中）
+            elif user_query.startswith("查古文") or user_query.startswith("古文") or user_query.startswith("古诗") or any(k in user_query for k in ["岳阳楼记", "醉翁亭记", "出师表", "水调歌头", "先天下", "行路难", "酬乐天", "左迁至蓝关"]):
+                search_title = re.sub(r"^(查古文|古文|古诗|诗词)\s*", "", user_query).strip()
+                if not search_title:
+                    card_to_send = build_arts_bot_welcome_card()
+                else:
+                    ancient_result = query_ancient_text(search_title)
+                    if ancient_result.get("matched"):
+                        card_to_send = build_ancient_card(ancient_result)
+                    else:
+                        llm_ans = await generate_suzhou_answer(
+                            f"统编九年级文言与古诗考点、重点字词释义与名句赏析：{search_title}",
+                            "九年级语文 (统编版)"
+                        )
+                        out_check = check_for_out_of_bounds(llm_ans or "")
+                        if llm_ans and out_check["is_safe"]:
+                            card_to_send = build_arts_qa_result_card(search_title, llm_ans, "九年级语文")
+                        elif llm_ans:
+                            card_to_send = {
+                                "config": {"wide_screen_mode": True},
+                                "header": {"template": "red", "title": {"tag": "plain_text", "content": "🛡️ 答题输出防超纲拦截"}},
+                                "elements": [
+                                    {"tag": "div", "text": {"tag": "lark_md", "content": f"生成内容包含超纲内容：`{out_check['violations']}`，已熔断保护。请换个问法。"}}
+                                ]
+                            }
+                        else:
+                            card_to_send = build_arts_qa_result_card(search_title, "篇目正在收录中，请稍后再试或换个问法。", "九年级语文")
+
+            # 意图 4：其他文科问题（语文/历史/道法/英语综合）直接大模型检索解答
+            else:
+                guard_check = check_for_out_of_bounds(user_query)
+                if not guard_check["is_safe"]:
+                    card_to_send = {
+                        "config": {"wide_screen_mode": True},
+                        "header": {"template": "red", "title": {"tag": "plain_text", "content": "🛡️ 苏州9年级考纲防超纲拦截"}},
+                        "elements": [
+                            {"tag": "div", "text": {"tag": "lark_md", "content": f"**抱歉，检测到提问包含高中超纲内容**：`{guard_check['violations']}`。\n\n本机器人严格遵循苏州市初中学业水平考试考标（语文/历史/道法统编版、英语译林牛津版），请尝试以初中课本知识提问。"}}
+                        ]
+                    }
+                else:
+                    subject = detect_arts_subject(user_query)
+                    llm_answer = await generate_suzhou_answer(user_query, subject)
+                    if llm_answer:
+                        out_check = check_for_out_of_bounds(llm_answer)
+                        if out_check["is_safe"]:
+                            card_to_send = build_arts_qa_result_card(user_query, llm_answer, subject)
+                        else:
+                            card_to_send = {
+                                "config": {"wide_screen_mode": True},
+                                "header": {"template": "red", "title": {"tag": "plain_text", "content": "🛡️ 答题输出防超纲拦截"}},
+                                "elements": [
+                                    {"tag": "div", "text": {"tag": "lark_md", "content": f"生成内容包含高中超纲内容：`{out_check['violations']}`，已熔断保护。请换个问法。"}}
+                                ]
+                            }
+                    else:
+                        card_to_send = {
+                            "config": {"wide_screen_mode": True},
+                            "header": {"template": "orange", "title": {"tag": "plain_text", "content": "⏳ 检索服务繁忙"}},
+                            "elements": [
+                                {"tag": "div", "text": {"tag": "lark_md", "content": "当前检索服务暂时繁忙，请稍后重新提问。"}}
+                            ]
+                        }
+
+        if card_to_send and message_id:
+            await reply_interactive_card(
+                message_id, card_to_send,
+                app_id=ARTS_APP_ID, app_secret=ARTS_APP_SECRET
+            )
+
+    except Exception as e:
+        print(f"[Arts Bot Async Task Error] 异常: {e}")
+
+@app.post("/api/feishu/arts_event")
+@app.post("/suzhou/api/feishu/arts_event")
+@app.post("/api/feishu/arts/event")
+async def feishu_arts_event_handler(request: Request, background_tasks: BackgroundTasks):
+    """
+    专属文科检索问答机器人 Webhook 网关端点：
+    1. URL Verification 安全握手
+    2. 卡片 Action 原地刷新交互 (arts_query_word, arts_query_ancient, back_to_arts_menu)
+    3. IM 接收消息事件 (幂等去重 + BackgroundTasks 异步处理，避免飞书超时重试)
+       群聊中 @ 本机器人即可提问，即问即答，无需学科切换等特殊流程。
+    """
+    try:
+        body = await request.json()
+    except Exception:
+        return {"code": 0, "msg": "invalid json"}
+
+    # 1. 飞书 URL 校验握手
+    if body.get("type") == "url_verification":
+        return {"challenge": body.get("challenge", "")}
+
+    # 2. 飞书交互式卡片点击回传 (card.action.trigger)
+    if "action" in body and ("open_message_id" in body or "open_id" in body):
+        action_val = body.get("action", {}).get("value", {})
+        action_type = action_val.get("action")
+
+        if action_type == "back_to_arts_menu":
+            return {"card": build_arts_bot_welcome_card()}
+
+        elif action_type == "arts_query_word":
+            word = action_val.get("word", "")
+            word_result = query_english_word(word)
+            if word_result.get("matched"):
+                return {"card": build_word_card(word_result)}
+            ans = await generate_suzhou_answer(f"初三英语考纲单词与短语释义与搭配：{word}", "九年级英语 (译林牛津版9A/9B)")
+            return {"card": build_arts_qa_result_card(f"单词：{word}", ans or "词库正在收录中", "九年级英语")}
+
+        elif action_type == "arts_query_ancient":
+            title = action_val.get("title", "")
+            ancient_result = query_ancient_text(title)
+            if ancient_result.get("matched"):
+                return {"card": build_ancient_card(ancient_result)}
+            ans = await generate_suzhou_answer(f"统编九年级文言考点与释义：{title}", "九年级语文 (统编版)")
+            return {"card": build_arts_qa_result_card(title, ans or "篇目正在收录中", "九年级语文")}
+
+        return {"toast": {"type": "info", "content": "功能已就绪"}}
+
+    # 3. 飞书 v2.0 事件订阅 (im.message.receive_v1)
+    header = body.get("header", {})
+    event_type = header.get("event_type")
+
+    if event_type == "im.message.receive_v1":
+        event = body.get("event", {})
+        sender_type = event.get("sender", {}).get("sender_type")
+        if sender_type == "app":
+            return {"code": 0, "msg": "ignore bot message"}
+
+        event_id = header.get("event_id", "")
+        message = event.get("message", {})
+        message_id = message.get("message_id", "")
+
+        if check_and_mark_event_processed(event_id, message_id):
+            print(f"[Arts Bot Deduplicate] 拦截到重复事件: event_id={event_id}, message_id={message_id}")
+            return {"code": 0, "msg": "duplicate event ignored"}
+
+        background_tasks.add_task(process_arts_bot_im_message_task, event)
+        return {"code": 0, "msg": "success"}
+
+    return {"code": 0, "msg": "success"}
+
 @app.get("/api/system/model_status")
 
 async def get_model_status():
@@ -1124,10 +1777,20 @@ async def test_vocab_welcome_card():
     """测试获取专属背单词机器人欢迎卡片 JSON"""
     return build_vocab_bot_welcome_card()
 
+@app.get("/api/test/vocab_bitable_welcome_card")
+async def test_vocab_bitable_welcome_card():
+    """测试获取新版【飞书交互卡片 + 多维表格】专属英语默写机器人欢迎卡片 JSON"""
+    return build_vocab_bitable_welcome_card("https://feishu.cn/base/demo_token", 4)
+
 @app.get("/api/test/stem_welcome_card")
 async def test_stem_welcome_card(subject: str = "math"):
     """测试获取专属数理化拍照搜题机器人欢迎卡片 JSON"""
     return build_stem_bot_welcome_card(subject)
+
+@app.get("/api/test/arts_welcome_card")
+async def test_arts_welcome_card():
+    """测试获取专属文科检索问答机器人欢迎卡片 JSON"""
+    return build_arts_bot_welcome_card()
 
 if __name__ == "__main__":
     import uvicorn

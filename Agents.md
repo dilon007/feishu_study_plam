@@ -61,8 +61,10 @@
   * **进程管理**：systemd 服务保活（`feishu-suzhou-study.service`），虚拟环境运行在 `/opt/feishu_study_plam/venv`。
   * **飞书事件回调地址集群**：
     - ① **全科综合中台机器人**：`https://dilonclaw.cloud/suzhou/api/feishu/event`
-    - ② **专属英语背词伴读机器人**：`https://dilonclaw.cloud/suzhou/api/feishu/vocab_event`
+    - ② **专属英语背词伴读机器人（原版保留）**：`https://dilonclaw.cloud/suzhou/api/feishu/vocab_event`
     - ③ **专属数理化拍照搜题机器人**：`https://dilonclaw.cloud/suzhou/api/feishu/stem_event`
+    - ④ **新版英语默写机器人（飞书交互卡片 + 多维表格版）**：`https://dilonclaw.cloud/suzhou/api/feishu/vocab_bitable_event`
+    - ⑤ **专属文科检索问答机器人（语文字词/英文单词/历史道法，群聊 @ 即问即答）**：`https://dilonclaw.cloud/suzhou/api/feishu/arts_event`
   * **模型与系统监控**：`https://dilonclaw.cloud/suzhou/api/system/model_status`
 
 ---
@@ -162,6 +164,8 @@ feishu_study_plam/
 | 2026-10-21 | Feature | 支持中台词条全字段在线输入与修改：重构前端词汇校对工作台，将原本只读的英文短语列升级为原生 `<input class="phrase-input">` 与音标输入框，补充短语时自动生成空白条目并聚焦输入框，打通中英文双向编辑与后端持久化存储 | `frontend/vocab_workbench.html`, `backend/card_builder.py`, `AGENTS.md` |
 | 2026-10-21 | Refactor | 移除全流程音标展示与输入：响应用户需求，彻底移除中台工作台、A4打印单、逐词默写卡及飞书卡片中的音标输入与展示，界面精简聚焦于英文短语与中文释义 | `frontend/vocab_workbench.html`, `backend/card_builder.py`, `AGENTS.md` |
 | 2026-10-22 | Feature | 将后台 AI 接口无缝切换为 DeepSeek 主用并完整保留 Google Gemini 作为无感降级容灾：实现文科 `deepseek-chat` 敏捷响应与理科 `deepseek-reasoner` (R1) 慢思考深度推导；多模态拍照搜题与课文划线词汇提取优先路由 DeepSeek 视觉，遇到限流或异常时自动毫秒级回退至 Google Gemini 旗舰矩阵，保障双重极高可用性 | `backend/llm_provider.py`, `.env`, `AGENTS.md` |
+| 2026-10-26 | Feature | 新增独立【飞书交互卡片 + 多维表格版】英语默写机器人（完整保留原版英语默写机器人）：以飞书多维表格（Bitable）作为唯一核心词库，拍照识别仅负责向多维表格追加词条，所有背诵清单、纯中文 Todo List 默写单与逐词翻页默写均实时从多维表格拉取，支持卡片一键将掌握状态回写同步至多维表格，零外部 HTML 网页依赖 | `backend/bitable_service.py`, `backend/card_builder.py`, `backend/vocab_aggregator.py`, `backend/feishu_client.py`, `backend/main.py`, `.env`, `AGENTS.md` |
+| 2026-10-27 | Feature | 新增独立【专属文科检索问答机器人（苏九文科检索伴读）】：面向语文（统编版字词/古诗文）、英语（译林牛津版单词短语）、历史与道法（统编版）的轻量即问即答检索；支持群聊 @ 机器人或私聊直接提问，无需学科切换等特殊流程；英语与古诗文优先本地词库/古文库秒级命中，未命中自动走 DeepSeek 文科引擎（Gemini 容灾），全流程保留输入+输出双重防超纲审查；新增 `FEISHU_ARTS_APP_ID`/`SECRET` 独立凭证与网关 `/api/feishu/arts_event` | `backend/feishu_client.py`, `backend/card_builder.py`, `backend/main.py`, `.env`, `AGENTS.md` |
 
 
 
@@ -177,6 +181,7 @@ feishu_study_plam/
 - [x] 独立配置专属英语背单词机器人（苏九背词伴读，网关 /api/feishu/vocab_event）
 - [x] 独立配置专属数理化拍照搜题机器人（苏九数理化搜题伴读，专精数理化试卷拍照识题与苏州考标解题，网关 /api/feishu/stem_event）
 - [x] 接入国内大模型接口（DeepSeek R1 / Chat 作为主用，Google Gemini 完整保留作为无感降级备用）
+- [x] 独立配置专属文科检索问答机器人（苏九文科检索伴读，群聊 @ 即问即答检索语文字词/英文单词/历史道法，网关 /api/feishu/arts_event）
 - [ ] 补充苏科版数学/物理章节知识点知识库 (RAG 向量切片构建)
 - [ ] 扩充 `guardrail.py` 中的高中超纲禁忌词库与正向初中考标词库
 - [ ] 重启并完善飞书工作台 Web App 网页端与免登流程

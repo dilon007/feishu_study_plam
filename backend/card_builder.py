@@ -1073,5 +1073,688 @@ def build_stem_qa_result_card(title: str, content: str, subject_name: str, subje
     }
 
 
+# ==============================================================================
+# 专属文科检索问答机器人卡片组（苏九文科检索伴读）
+# 专精苏州市初三语文（字词/古诗文）、英语（单词短语）、历史与道法的群聊 @ 检索问答
+# ==============================================================================
+
+def build_arts_bot_welcome_card() -> dict:
+    """
+    构建专属文科检索问答机器人（苏九文科检索伴读）的首屏欢迎与使用指南卡片
+    """
+    return {
+        "config": {"wide_screen_mode": True},
+        "header": {
+            "template": "violet",
+            "title": {"tag": "plain_text", "content": "📚 苏九文科 · 文科检索问答伴读机器人"}
+        },
+        "elements": [
+            {
+                "tag": "div",
+                "text": {
+                    "tag": "lark_md",
+                    "content": (
+                        "👋 **欢迎使用苏州市九年级文科专属检索问答机器人！**\n\n"
+                        "无需任何设置，**在群里 @ 本机器人**或私聊直接提问，即可秒级检索初三文科考点与规范解析。"
+                    )
+                }
+            },
+            {"tag": "hr"},
+            {
+                "tag": "div",
+                "text": {
+                    "tag": "lark_md",
+                    "content": (
+                        "🎯 **对齐苏州市初三官方文科教材与考标：**\n"
+                        "• **📖 语文（统编部编版）**：字词汇音、文言古诗名句、文学常识、名著导读；\n"
+                        "• **🇬🇧 英语（译林牛津版 9A/9B）**：单词短语释义、重点搭配与用法辨析；\n"
+                        "• **🏛️ 历史（统编部编版）**：世界近代史大事、重要变革与条约影响；\n"
+                        "• **⚖️ 道德与法治（统编部编版）**：核心概念、法律常识与国情考点。\n\n"
+                        "✨ **提问示例**：\n"
+                        "- `@苏九文科伴读 查单词 generous`\n"
+                        "- `@苏九文科伴读 岳阳楼记 先天下之忧而忧`\n"
+                        "- `@苏九文科伴读 工业革命的影响`\n"
+                        "- `@苏九文科伴读 「塞翁失马」的寓意`"
+                    )
+                }
+            },
+            {"tag": "hr"},
+            {
+                "tag": "action",
+                "actions": [
+                    {
+                        "tag": "button",
+                        "text": {"tag": "plain_text", "content": "📖 示例·查单词"},
+                        "type": "default",
+                        "value": {"action": "arts_query_word", "word": "generous"}
+                    },
+                    {
+                        "tag": "button",
+                        "text": {"tag": "plain_text", "content": "📜 示例·查古文"},
+                        "type": "default",
+                        "value": {"action": "arts_query_ancient", "title": "岳阳楼记"}
+                    }
+                ]
+            },
+            {
+                "tag": "note",
+                "elements": [
+                    {
+                        "tag": "plain_text",
+                        "content": "🛡️ 所有问答均严格限定苏州市九年级考纲范围，高中超纲内容将被自动拦截。"
+                    }
+                ]
+            }
+        ]
+    }
+
+def build_arts_qa_result_card(question: str, answer: str, subject_label: str = "九年级文科") -> dict:
+    """
+    构建文科检索问答结果卡片
+    """
+    return {
+        "config": {"wide_screen_mode": True},
+        "header": {
+            "template": "violet",
+            "title": {
+                "tag": "plain_text",
+                "content": f"📚 苏九文科检索 · {subject_label}"
+            }
+        },
+        "elements": [
+            {
+                "tag": "div",
+                "text": {
+                    "tag": "lark_md",
+                    "content": f"🔍 **检索问题**：\n{question}"
+                }
+            },
+            {"tag": "hr"},
+            {
+                "tag": "div",
+                "text": {
+                    "tag": "lark_md",
+                    "content": answer
+                }
+            },
+            {"tag": "hr"},
+            {
+                "tag": "note",
+                "elements": [
+                    {
+                        "tag": "plain_text",
+                        "content": "💡 群里 @ 本机器人即可继续提问；支持语文、英语、历史、道法检索。"
+                    }
+                ]
+            }
+        ]
+    }
+
+
+# ==============================================================================
+# 新版专属英语默写机器人卡片组（纯飞书交互卡片 + 飞书多维表格 Bitable 架构，零 HTML 网页依赖）
+# 核心原则：拍照只负责往多维表格追加词条，所有背诵和默写均实时从多维表格拉取！
+# ==============================================================================
+
+def _build_bitable_open_button(bitable_url: str, label: str = "📊 打开多维表格词库") -> dict:
+    """构建打开飞书多维表格的按钮（若尚未创建或绑定，则触发自动创建 Action）"""
+    if bitable_url:
+        return {
+            "tag": "button",
+            "text": {"tag": "plain_text", "content": label},
+            "type": "default",
+            "multi_url": {
+                "url": bitable_url,
+                "pc_url": bitable_url,
+                "android_url": bitable_url,
+                "ios_url": bitable_url
+            }
+        }
+    return {
+        "tag": "button",
+        "text": {"tag": "plain_text", "content": "📊 一键创建/连接多维表格词库"},
+        "type": "default",
+        "value": {"action": "bitable_auto_create"}
+    }
+
+
+def build_vocab_bitable_welcome_card(bitable_url: str = "", total_count: int = 0, sync_note: str = "") -> dict:
+    """
+    构建新版【飞书交互卡片 + 多维表格】专属英语默写机器人的首屏导航卡片
+    """
+    status_line = (
+        f"✅ **已连接多维表格核心词库**（当前收录 **{total_count}** 条词汇）"
+        if bitable_url else
+        "📌 **核心词库状态**：首次拍照或点击下方按钮将自动为您创建/连接飞书多维表格（也可直接发送已有飞书多维表格链接进行绑定）"
+    )
+    if sync_note:
+        status_line += f"\n💡 *{sync_note}*"
+
+    return {
+        "config": {"wide_screen_mode": True},
+        "header": {
+            "template": "wathet",
+            "title": {"tag": "plain_text", "content": "📊 苏九背词伴读 · 飞书卡片 + 多维表格版"}
+        },
+        "elements": [
+            {
+                "tag": "div",
+                "text": {
+                    "tag": "lark_md",
+                    "content": (
+                        "👋 **欢迎使用苏州市九年级英语默写助手（原生卡片 + 多维表格版）！**\n\n"
+                        "本机器人采用 **100% 飞书原生交互卡片 + 飞书多维表格（Bitable）** 架构，无需打开任何外部 HTML 网页。\n\n"
+                        f"{status_line}"
+                    )
+                }
+            },
+            {"tag": "hr"},
+            {
+                "tag": "div",
+                "text": {
+                    "tag": "lark_md",
+                    "content": (
+                        "🚀 **核心工作流（以多维表格为唯一词库）：**\n"
+                        "1. 📸 **拍照追加词条**：发送课本荧光笔高亮或下划线截图，AI 识别后**直接追加写入飞书多维表格**；\n"
+                        "2. 📊 **多维表格管理**：随时在飞书多维表格内修改英文短语、中文释义、增删词条或筛选视图；\n"
+                        "3. 📖 **拉取背诵清单**：一键从多维表格实时拉取最新英汉对照卡片；\n"
+                        "4. 📝 **拉取默写自测**：从多维表格实时拉取生成**【纯中文 Todo List 默写单】**或**【逐词翻页默写卡】**，并在卡片上直接标记掌握状态同步回多维表格！"
+                    )
+                }
+            },
+            {"tag": "hr"},
+            {
+                "tag": "action",
+                "actions": [
+                    {
+                        "tag": "button",
+                        "text": {"tag": "plain_text", "content": "📝 从多维表格拉取默写单"},
+                        "type": "primary",
+                        "value": {"action": "bitable_pull_checklist", "scope": "all"}
+                    },
+                    {
+                        "tag": "button",
+                        "text": {"tag": "plain_text", "content": "✍️ 逐词翻页默写 (拉取表格)"},
+                        "type": "default",
+                        "value": {"action": "bitable_pull_dictate_step", "scope": "unmastered", "index": 0, "reveal": False}
+                    },
+                    {
+                        "tag": "button",
+                        "text": {"tag": "plain_text", "content": "📖 拉取多维表格背诵清单"},
+                        "type": "default",
+                        "value": {"action": "bitable_pull_recite", "scope": "all"}
+                    }
+                ]
+            },
+            {
+                "tag": "action",
+                "actions": [
+                    _build_bitable_open_button(bitable_url, "📊 打开飞书多维表格词库"),
+                    {
+                        "tag": "button",
+                        "text": {"tag": "plain_text", "content": "➕ 追加示例词条到多维表格"},
+                        "type": "default",
+                        "value": {"action": "bitable_init_demo"}
+                    }
+                ]
+            },
+            {
+                "tag": "note",
+                "elements": [
+                    {
+                        "tag": "plain_text",
+                        "content": "💡 绑定自定义多维表格：直接把您的飞书多维表格链接发到对话框，机器人即可自动绑定该表格作为您的专属词库！"
+                    }
+                ]
+            }
+        ]
+    }
+
+
+def build_vocab_bitable_append_result_card(
+    appended_items: list[dict],
+    bitable_url: str = "",
+    batch_title: str = "课文划线词汇",
+    sync_ok: bool = True,
+    sync_msg: str = ""
+) -> dict:
+    """
+    构建拍照识别后【追加写入多维表格成功】的反馈卡片：
+    拍照只负责往多维表格里追加词条，卡片下方提供从多维表格拉取背诵/默写的快捷入口。
+    """
+    lines = []
+    for idx, it in enumerate(appended_items, 1):
+        phrase = it.get("phrase", "")
+        meaning = it.get("meaning", "")
+        lines.append(f"**{idx}. {phrase}** —— *{meaning}*")
+    list_md = "\n".join(lines) if lines else "*(无新增词条)*"
+
+    sync_badge = (
+        f"✅ **多维表格同步状态**：{sync_msg or '已成功追加写入飞书多维表格！'}"
+        if sync_ok else
+        f"📦 **词库记录状态**：已存入词库缓存（{sync_msg}）"
+    )
+
+    return {
+        "config": {"wide_screen_mode": True},
+        "header": {
+            "template": "green" if sync_ok else "wathet",
+            "title": {"tag": "plain_text", "content": f"📥 已追加 {len(appended_items)} 条词汇至多维表格"}
+        },
+        "elements": [
+            {
+                "tag": "div",
+                "text": {
+                    "tag": "lark_md",
+                    "content": (
+                        f"**【来源批次】**：{batch_title}\n"
+                        f"{sync_badge}\n\n"
+                        f"**【本次追加写入多维表格的词条】**：\n{list_md}"
+                    )
+                }
+            },
+            {"tag": "hr"},
+            {
+                "tag": "action",
+                "actions": [
+                    {
+                        "tag": "button",
+                        "text": {"tag": "plain_text", "content": "📝 拉取本批次生成默写单"},
+                        "type": "primary",
+                        "value": {"action": "bitable_pull_checklist", "scope": "latest"}
+                    },
+                    {
+                        "tag": "button",
+                        "text": {"tag": "plain_text", "content": "📝 拉取全部词库默写单"},
+                        "type": "default",
+                        "value": {"action": "bitable_pull_checklist", "scope": "all"}
+                    },
+                    {
+                        "tag": "button",
+                        "text": {"tag": "plain_text", "content": "✍️ 逐词翻页默写"},
+                        "type": "default",
+                        "value": {"action": "bitable_pull_dictate_step", "scope": "latest", "index": 0, "reveal": False}
+                    }
+                ]
+            },
+            {
+                "tag": "action",
+                "actions": [
+                    _build_bitable_open_button(bitable_url, "📊 打开多维表格修改/校对词条"),
+                    {
+                        "tag": "button",
+                        "text": {"tag": "plain_text", "content": "📖 拉取多维表格背诵清单"},
+                        "type": "default",
+                        "value": {"action": "bitable_pull_recite", "scope": "all"}
+                    }
+                ]
+            },
+            {
+                "tag": "note",
+                "elements": [
+                    {
+                        "tag": "plain_text",
+                        "content": "💡 如需修改英文短语或中文释义，请直接点击【打开多维表格修改/校对词条】编辑单元格，随后点击拉取默写单即可实时生效！"
+                    }
+                ]
+            }
+        ]
+    }
+
+
+def build_vocab_bitable_recite_card(
+    items: list[dict],
+    bitable_url: str = "",
+    scope: str = "all",
+    from_remote: bool = True
+) -> dict:
+    """
+    构建从飞书多维表格实时拉取的【英汉对照背诵清单卡片】
+    """
+    scope_labels = {
+        "all": "全部词库",
+        "unmastered": "待默写词条",
+        "latest": "最近拍照批次"
+    }
+    scope_name = scope_labels.get(scope, "全部词库")
+
+    if not items:
+        body_md = "📭 **当前多维表格词库暂无词条**\n请直接发送课本划线截图，或点击下方【➕ 追加示例词条到多维表格】。"
+    else:
+        vocab_lines = []
+        for idx, item in enumerate(items, 1):
+            phrase = item.get("phrase", "")
+            meaning = item.get("meaning", "")
+            status = item.get("status", "待默写")
+            status_icon = "✅" if "已掌握" in status else ("⭐" if "重点" in status or "易错" in status else "🔹")
+            vocab_lines.append(f"{status_icon} **{idx}. {phrase}** —— *{meaning}* `[{status}]`")
+        body_md = "\n".join(vocab_lines)
+
+    source_tag = "🟢 已从飞书多维表格实时同步" if from_remote else "🔵 词库镜像数据（绑定或开启多维表格权限后实时同步）"
+
+    return {
+        "config": {"wide_screen_mode": True},
+        "header": {
+            "template": "blue",
+            "title": {"tag": "plain_text", "content": f"📖 多维表格背诵清单 · {scope_name} (共 {len(items)} 条)"}
+        },
+        "elements": [
+            {
+                "tag": "div",
+                "text": {
+                    "tag": "lark_md",
+                    "content": f"**【数据源】**：{source_tag}\n\n{body_md}"
+                }
+            },
+            {"tag": "hr"},
+            {
+                "tag": "action",
+                "actions": [
+                    {
+                        "tag": "button",
+                        "text": {"tag": "plain_text", "content": "📝 生成纯中文默写清单"},
+                        "type": "primary",
+                        "value": {"action": "bitable_pull_checklist", "scope": scope}
+                    },
+                    {
+                        "tag": "button",
+                        "text": {"tag": "plain_text", "content": "✍️ 卡片逐词翻页默写"},
+                        "type": "default",
+                        "value": {"action": "bitable_pull_dictate_step", "scope": scope, "index": 0, "reveal": False}
+                    },
+                    {
+                        "tag": "button",
+                        "text": {"tag": "plain_text", "content": "🔄 重新从多维表格拉取"},
+                        "type": "default",
+                        "value": {"action": "bitable_pull_recite", "scope": scope}
+                    }
+                ]
+            },
+            {
+                "tag": "action",
+                "actions": [
+                    {
+                        "tag": "button",
+                        "text": {"tag": "plain_text", "content": "📚 看全部"},
+                        "type": "primary" if scope == "all" else "default",
+                        "value": {"action": "bitable_pull_recite", "scope": "all"}
+                    },
+                    {
+                        "tag": "button",
+                        "text": {"tag": "plain_text", "content": "🎯 仅看待默写"},
+                        "type": "primary" if scope == "unmastered" else "default",
+                        "value": {"action": "bitable_pull_recite", "scope": "unmastered"}
+                    },
+                    {
+                        "tag": "button",
+                        "text": {"tag": "plain_text", "content": "🆕 仅看最近批次"},
+                        "type": "primary" if scope == "latest" else "default",
+                        "value": {"action": "bitable_pull_recite", "scope": "latest"}
+                    },
+                    _build_bitable_open_button(bitable_url, "📊 打开多维表格编辑")
+                ]
+            }
+        ]
+    }
+
+
+def build_vocab_bitable_checklist_card(
+    items: list[dict],
+    bitable_url: str = "",
+    show_answers: bool = False,
+    scope: str = "all"
+) -> dict:
+    """
+    构建从飞书多维表格实时拉取的【纯中文 Todo List 默写清单卡片】
+    零 HTML 网页依赖，所有数据实时从飞书多维表格读取！
+    """
+    scope_labels = {
+        "all": "全部词库",
+        "unmastered": "待默写词条",
+        "latest": "最近批次"
+    }
+    scope_name = scope_labels.get(scope, "全部词库")
+    total = len(items)
+
+    if total == 0:
+        content_md = "📭 **多维表格中暂无符合条件的词条**，请先拍照上传课文划线图片或点击下方按钮初始化示例词条。"
+    else:
+        checklist_lines = []
+        for idx, item in enumerate(items, 1):
+            meaning = item.get("meaning", "").strip() or "（请根据课文记忆填空）"
+            phrase = item.get("phrase", "").strip()
+            note = item.get("note", "").strip()
+            status = item.get("status", "待默写").strip()
+            note_str = f" · *{note}*" if note else ""
+
+            if show_answers:
+                checklist_lines.append(f"- [ ] **{idx}.** {meaning} `[{status}]`\n      👉 答案：`{phrase}`{note_str}")
+            else:
+                checklist_lines.append(f"- [ ] **{idx}.** {meaning}")
+        content_md = "\n\n".join(checklist_lines)
+
+    toggle_btn = (
+        {
+            "tag": "button",
+            "text": {"tag": "plain_text", "content": "👀 查看参考答案"},
+            "type": "primary",
+            "value": {"action": "bitable_toggle_checklist_answers", "scope": scope, "show_answers": True}
+        }
+        if not show_answers else
+        {
+            "tag": "button",
+            "text": {"tag": "plain_text", "content": "🙈 隐藏参考答案"},
+            "type": "default",
+            "value": {"action": "bitable_toggle_checklist_answers", "scope": scope, "show_answers": False}
+        }
+    )
+
+    return {
+        "config": {"wide_screen_mode": True},
+        "header": {
+            "template": "turquoise" if show_answers else "blue",
+            "title": {
+                "tag": "plain_text",
+                "content": (
+                    f"📝 多维表格默写清单 ({scope_name} · 共 {total} 条)"
+                    if not show_answers else
+                    f"🎯 多维表格默写参考答案 ({scope_name} · 共 {total} 条)"
+                )
+            }
+        },
+        "elements": [
+            {
+                "tag": "div",
+                "text": {
+                    "tag": "lark_md",
+                    "content": (
+                        f"🎯 **【纯中文默写自测清单（数据源：飞书多维表格 · {scope_name}）】**\n"
+                        f"每默写完成一条可直接在卡片上打勾 ✅。若在多维表格中修改了释义，点击【🔄 同步最新表格】即可刷新：\n\n{content_md}"
+                        if not show_answers else
+                        f"🎯 **【多维表格参考答案核对（{scope_name}）】**\n"
+                        f"请仔细核对英文拼写与固定搭配：\n\n{content_md}"
+                    )
+                }
+            },
+            {"tag": "hr"},
+            {
+                "tag": "action",
+                "actions": [
+                    toggle_btn,
+                    {
+                        "tag": "button",
+                        "text": {"tag": "plain_text", "content": "🔄 同步最新表格"},
+                        "type": "default",
+                        "value": {"action": "bitable_toggle_checklist_answers", "scope": scope, "show_answers": show_answers}
+                    },
+                    {
+                        "tag": "button",
+                        "text": {"tag": "plain_text", "content": "✍️ 逐词翻页默写"},
+                        "type": "default",
+                        "value": {"action": "bitable_pull_dictate_step", "scope": scope, "index": 0, "reveal": False}
+                    },
+                    _build_bitable_open_button(bitable_url, "📊 打开多维表格")
+                ]
+            },
+            {
+                "tag": "action",
+                "actions": [
+                    {
+                        "tag": "button",
+                        "text": {"tag": "plain_text", "content": "📚 全部词条"},
+                        "type": "primary" if scope == "all" else "default",
+                        "value": {"action": "bitable_toggle_checklist_answers", "scope": "all", "show_answers": show_answers}
+                    },
+                    {
+                        "tag": "button",
+                        "text": {"tag": "plain_text", "content": "🎯 仅待默写"},
+                        "type": "primary" if scope == "unmastered" else "default",
+                        "value": {"action": "bitable_toggle_checklist_answers", "scope": "unmastered", "show_answers": show_answers}
+                    },
+                    {
+                        "tag": "button",
+                        "text": {"tag": "plain_text", "content": "🆕 最近批次"},
+                        "type": "primary" if scope == "latest" else "default",
+                        "value": {"action": "bitable_toggle_checklist_answers", "scope": "latest", "show_answers": show_answers}
+                    },
+                    {
+                        "tag": "button",
+                        "text": {"tag": "plain_text", "content": "📖 英汉背诵表"},
+                        "type": "default",
+                        "value": {"action": "bitable_pull_recite", "scope": scope}
+                    }
+                ]
+            }
+        ]
+    }
+
+
+def build_vocab_bitable_dictation_card(
+    items: list[dict],
+    bitable_url: str = "",
+    current_index: int = 0,
+    show_answer: bool = False,
+    scope: str = "all"
+) -> dict:
+    """
+    构建基于飞书多维表格的【原生逐词翻页默写卡片】：
+    支持在卡片上点击【✅ 标记已掌握】或【⭐ 标记易错】，直接回写更新飞书多维表格的“掌握状态”列！
+    """
+    total = len(items)
+    if total == 0:
+        return build_vocab_bitable_recite_card(items, bitable_url, scope)
+
+    idx = max(0, min(current_index, total - 1))
+    cur = items[idx]
+    record_id = cur.get("record_id", "")
+    status = cur.get("status", "待默写")
+
+    if show_answer:
+        answer_md = (
+            f"**【英文答案】**：`{cur.get('phrase', '')}`\n"
+            f"**【中考考点备注】**：{cur.get('note', '译林版九年级核心词组')}\n"
+            f"**【多维表格当前状态】**：`{status}`"
+        )
+        reveal_btn = {
+            "tag": "button",
+            "text": {"tag": "plain_text", "content": "🙈 隐藏答案"},
+            "type": "default",
+            "value": {"action": "bitable_pull_dictate_step", "scope": scope, "index": idx, "reveal": False}
+        }
+    else:
+        answer_md = f"💡 *请在心中思考或在草稿纸上默写，随后点击下方揭晓答案（当前表格状态：`{status}`）*"
+        reveal_btn = {
+            "tag": "button",
+            "text": {"tag": "plain_text", "content": "👀 揭晓英文答案"},
+            "type": "primary",
+            "value": {"action": "bitable_pull_dictate_step", "scope": scope, "index": idx, "reveal": True}
+        }
+
+    next_idx = (idx + 1) if (idx + 1 < total) else 0
+    next_text = "➡️ 下一词" if (idx + 1 < total) else "🎉 完成一轮 (从头再来)"
+    next_btn = {
+        "tag": "button",
+        "text": {"tag": "plain_text", "content": next_text},
+        "type": "primary" if show_answer else "default",
+        "value": {"action": "bitable_pull_dictate_step", "scope": scope, "index": next_idx, "reveal": False}
+    }
+
+    return {
+        "config": {"wide_screen_mode": True},
+        "header": {
+            "template": "wathet",
+            "title": {"tag": "plain_text", "content": f"✍️ 多维表格逐词默写 · (第 {idx + 1}/{total} 题)"}
+        },
+        "elements": [
+            {
+                "tag": "div",
+                "text": {
+                    "tag": "lark_md",
+                    "content": f"### 📌 中文释义（拉取自多维表格）：\n# **{cur.get('meaning', '（请根据课文记忆填空）')}**"
+                }
+            },
+            {"tag": "hr"},
+            {
+                "tag": "div",
+                "text": {
+                    "tag": "lark_md",
+                    "content": answer_md
+                }
+            },
+            {"tag": "hr"},
+            {
+                "tag": "action",
+                "actions": [
+                    reveal_btn,
+                    next_btn,
+                    {
+                        "tag": "button",
+                        "text": {"tag": "plain_text", "content": "✅ 标记已掌握 (写回表格)"},
+                        "type": "default",
+                        "value": {
+                            "action": "bitable_mark_status",
+                            "record_id": record_id,
+                            "new_status": "已掌握",
+                            "scope": scope,
+                            "index": next_idx
+                        }
+                    },
+                    {
+                        "tag": "button",
+                        "text": {"tag": "plain_text", "content": "⭐ 标记易错 (写回表格)"},
+                        "type": "default",
+                        "value": {
+                            "action": "bitable_mark_status",
+                            "record_id": record_id,
+                            "new_status": "易错重点",
+                            "scope": scope,
+                            "index": next_idx
+                        }
+                    }
+                ]
+            },
+            {
+                "tag": "action",
+                "actions": [
+                    {
+                        "tag": "button",
+                        "text": {"tag": "plain_text", "content": "📝 切换整张默写清单"},
+                        "type": "default",
+                        "value": {"action": "bitable_pull_checklist", "scope": scope}
+                    },
+                    {
+                        "tag": "button",
+                        "text": {"tag": "plain_text", "content": "📖 返回背诵清单"},
+                        "type": "default",
+                        "value": {"action": "bitable_pull_recite", "scope": scope}
+                    },
+                    _build_bitable_open_button(bitable_url, "📊 打开多维表格词库")
+                ]
+            }
+        ]
+    }
+
+
+
 
 

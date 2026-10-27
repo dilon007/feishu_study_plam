@@ -3,6 +3,8 @@
 支持：
 1. 全科综合机器人（苏九学伴）
 2. 专属英语背单词机器人（苏九背词伴读）
+3. 专属数理化拍照搜题机器人（苏九数理化搜题伴读）
+4. 专属文科检索问答机器人（苏九文科检索伴读）
 """
 import os
 import time
@@ -19,8 +21,14 @@ DEFAULT_APP_SECRET = os.getenv("FEISHU_APP_SECRET", "")
 VOCAB_APP_ID = os.getenv("FEISHU_VOCAB_APP_ID", "") or DEFAULT_APP_ID
 VOCAB_APP_SECRET = os.getenv("FEISHU_VOCAB_APP_SECRET", "") or DEFAULT_APP_SECRET
 
+VOCAB_BITABLE_APP_ID = os.getenv("FEISHU_VOCAB_BITABLE_APP_ID", "") or VOCAB_APP_ID
+VOCAB_BITABLE_APP_SECRET = os.getenv("FEISHU_VOCAB_BITABLE_APP_SECRET", "") or VOCAB_APP_SECRET
+
 STEM_APP_ID = os.getenv("FEISHU_STEM_APP_ID", "") or DEFAULT_APP_ID
 STEM_APP_SECRET = os.getenv("FEISHU_STEM_APP_SECRET", "") or DEFAULT_APP_SECRET
+
+ARTS_APP_ID = os.getenv("FEISHU_ARTS_APP_ID", "") or DEFAULT_APP_ID
+ARTS_APP_SECRET = os.getenv("FEISHU_ARTS_APP_SECRET", "") or DEFAULT_APP_SECRET
 
 # 按 app_id 隔离存储各机器人的 token 缓存
 _token_caches: Dict[str, dict] = {}
